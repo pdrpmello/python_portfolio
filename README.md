@@ -1,2 +1,2 @@
-# python_portfolio
- Portfólio com projetos iniciais em Python - Dev Jr
+# Python portfolio
+ Portfolio with Junior Python Projects.
