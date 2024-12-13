@@ -1,0 +1,31 @@
+service: crm-erp-integration
+
+provider:
+  name: aws
+  runtime: python3.9
+  region: us-east-1
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "s3:PutObject"
+      Resource:
+        - "arn:aws:s3:::challenge-bucket737/*"
+
+functions:
+  syncOrders:
+    handler: handler.sync_orders
+    name: crm-erp-sync-orders
+    events:
+      - s3:
+          bucket: paulavadinho
+          event: s3:ObjectCreated:*
+  processData:
+    handler: handler.lambda_handler
+    name: crm-erp-process-data
+
+resources:
+  Resources:
+    ChallengeBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: challenge-bucket737
