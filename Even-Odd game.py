@@ -6,19 +6,23 @@ def even_odd():
     print("Welcome to the classic Even-Odd game!")
 
     # User's choice for Even or Odd
-    user_choice = input("Enter your choice ('Even' or 'Odd) and see if you can beat the machine: ").lower()
+    user_choice = input("Enter your choice ('Even' or 'Odd') and see if you can beat the machine: ").strip().lower()
 
-    while user_choice not in ['even', 'odd']:
+    while user_choice not in {'even', 'odd'}:  # Using set for faster lookup
         print("Invalid choice! Please choose either 'even' or 'odd'.")
-        user_choice = input("Enter your choice ('even' or 'odd'): ").lower()
+        user_choice = input("Enter your choice ('even' or 'odd'): ").strip().lower()
     
     try:
         # User's number choice between 1 and 10
-        user_number = int(input("Please choose a whole number between 1 and 10: "))
-
-        while user_number < 1 or user_number > 10:
-            print("Your whole number choice is out of range. Please choose a whole number between 1 and 10: ")
-            
+        while True:
+            try:
+                user_number = int(input("Please choose a whole number between 1 and 10: "))
+                if 1 <= user_number <= 10:  # More Pythonic range check
+                    break
+                print("Your number must be between 1 and 10.")
+            except ValueError:
+                print("Please enter a valid whole number.")
+        
         # Computer's number choice
         computer_number = random.randint(1, 10)
         total = user_number + computer_number
@@ -38,4 +42,5 @@ def even_odd():
         print(f"Error: {e}")
         
 # Running the game
-even_odd()       
+if __name__ == '__main__':  # Add this guard
+    even_odd()       
