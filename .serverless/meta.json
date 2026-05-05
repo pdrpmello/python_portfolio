@@ -1,0 +1,729 @@
+{
+  "C:\\Users\\pedro\\AppData\\Local\\Python Projects\\python_portfolio": {
+    "versionSfCore": null,
+    "versionFramework": "4.4.16",
+    "isWithinCompose": false,
+    "isCompose": false,
+    "composeOrgName": null,
+    "composeResolverProviders": {
+      "default-aws-credential-resolver": "<REDACTED>",
+      "sls": {
+        "instance": {
+          "credentials": "<REDACTED>",
+          "serviceConfigFile": {
+            "service": "crm-erp-integration",
+            "provider": {
+              "name": "aws",
+              "runtime": "python3.9",
+              "region": "us-east-1",
+              "iamRoleStatements": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:PutObject"
+                  ],
+                  "Resource": "arn:aws:s3:::challenge-bucket737/*"
+                }
+              ],
+              "stage": "dev",
+              "versionFunctions": true,
+              "compiledCloudFormationTemplate": {
+                "AWSTemplateFormatVersion": "2010-09-09",
+                "Description": "The AWS CloudFormation template for this Serverless application",
+                "Resources": {
+                  "SyncOrdersLogGroup": {
+                    "Type": "AWS::Logs::LogGroup",
+                    "Properties": {
+                      "LogGroupName": "/aws/lambda/crm-erp-sync-orders"
+                    }
+                  },
+                  "ProcessDataLogGroup": {
+                    "Type": "AWS::Logs::LogGroup",
+                    "Properties": {
+                      "LogGroupName": "/aws/lambda/crm-erp-process-data"
+                    }
+                  },
+                  "IamRoleLambdaExecution": {
+                    "Type": "AWS::IAM::Role",
+                    "Properties": {
+                      "AssumeRolePolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                          {
+                            "Effect": "Allow",
+                            "Principal": {
+                              "Service": [
+                                "lambda.amazonaws.com"
+                              ]
+                            },
+                            "Action": [
+                              "sts:AssumeRole"
+                            ]
+                          }
+                        ]
+                      },
+                      "Policies": [
+                        {
+                          "PolicyName": {
+                            "Fn::Join": [
+                              "-",
+                              [
+                                "crm-erp-integration",
+                                "dev",
+                                "lambda"
+                              ]
+                            ]
+                          },
+                          "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                              {
+                                "Effect": "Allow",
+                                "Action": [
+                                  "logs:CreateLogStream",
+                                  "logs:CreateLogGroup",
+                                  "logs:TagResource"
+                                ],
+                                "Resource": [
+                                  {
+                                    "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/crm-erp-sync-orders:*"
+                                  },
+                                  {
+                                    "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/crm-erp-process-data:*"
+                                  }
+                                ]
+                              },
+                              {
+                                "Effect": "Allow",
+                                "Action": [
+                                  "logs:PutLogEvents"
+                                ],
+                                "Resource": [
+                                  {
+                                    "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/crm-erp-sync-orders:*:*"
+                                  },
+                                  {
+                                    "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/crm-erp-process-data:*:*"
+                                  }
+                                ]
+                              },
+                              {
+                                "Effect": "Allow",
+                                "Action": [
+                                  "s3:PutObject"
+                                ],
+                                "Resource": "arn:aws:s3:::challenge-bucket737/*"
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "Path": "/",
+                      "RoleName": {
+                        "Fn::Join": [
+                          "-",
+                          [
+                            "crm-erp-integration",
+                            "dev",
+                            {
+                              "Ref": "AWS::Region"
+                            },
+                            "lambdaRole"
+                          ]
+                        ]
+                      }
+                    }
+                  },
+                  "SyncOrdersLambdaFunction": {
+                    "Type": "AWS::Lambda::Function",
+                    "Properties": {
+                      "Code": {
+                        "S3Bucket": "serverless-framework-deployments-us-east-1-a0989c70-9232",
+                        "S3Key": "serverless/crm-erp-integration/dev/1734101680321-2024-12-13T14:54:40.321Z/crm-erp-integration.zip"
+                      },
+                      "Handler": "handler.sync_orders",
+                      "Runtime": "python3.9",
+                      "FunctionName": "crm-erp-sync-orders",
+                      "MemorySize": 1024,
+                      "Timeout": 6,
+                      "Role": {
+                        "Fn::GetAtt": [
+                          "IamRoleLambdaExecution",
+                          "Arn"
+                        ]
+                      }
+                    },
+                    "DependsOn": [
+                      "SyncOrdersLogGroup"
+                    ]
+                  },
+                  "ProcessDataLambdaFunction": {
+                    "Type": "AWS::Lambda::Function",
+                    "Properties": {
+                      "Code": {
+                        "S3Bucket": "serverless-framework-deployments-us-east-1-a0989c70-9232",
+                        "S3Key": "serverless/crm-erp-integration/dev/1734101680321-2024-12-13T14:54:40.321Z/crm-erp-integration.zip"
+                      },
+                      "Handler": "handler.lambda_handler",
+                      "Runtime": "python3.9",
+                      "FunctionName": "crm-erp-process-data",
+                      "MemorySize": 1024,
+                      "Timeout": 6,
+                      "Role": {
+                        "Fn::GetAtt": [
+                          "IamRoleLambdaExecution",
+                          "Arn"
+                        ]
+                      }
+                    },
+                    "DependsOn": [
+                      "ProcessDataLogGroup"
+                    ]
+                  },
+                  "SyncOrdersLambdaVersion05Chb5f1X7eDBTRfeTIQKOz9iznsyzQ5A9Rgoch4": {
+                    "Type": "AWS::Lambda::Version",
+                    "DeletionPolicy": "Retain",
+                    "Properties": {
+                      "FunctionName": {
+                        "Ref": "SyncOrdersLambdaFunction"
+                      },
+                      "CodeSha256": "rk9TiQVS8Mulkm7/GhfEuFniDHqnUJBCY3Z7ApicHQ4="
+                    }
+                  },
+                  "ProcessDataLambdaVersionvMXQr1pBiKKfNyQNTUyxrlS2vJlI6toO2OWhnvvvA6s": {
+                    "Type": "AWS::Lambda::Version",
+                    "DeletionPolicy": "Retain",
+                    "Properties": {
+                      "FunctionName": {
+                        "Ref": "ProcessDataLambdaFunction"
+                      },
+                      "CodeSha256": "rk9TiQVS8Mulkm7/GhfEuFniDHqnUJBCY3Z7ApicHQ4="
+                    }
+                  },
+                  "S3BucketPaulavadinho": {
+                    "Type": "AWS::S3::Bucket",
+                    "Properties": {
+                      "BucketName": "paulavadinho",
+                      "NotificationConfiguration": {
+                        "LambdaConfigurations": [
+                          {
+                            "Event": "s3:ObjectCreated:*",
+                            "Function": {
+                              "Fn::GetAtt": [
+                                "SyncOrdersLambdaFunction",
+                                "Arn"
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "DependsOn": [
+                      "SyncOrdersLambdaPermissionPaulavadinhoS3"
+                    ]
+                  },
+                  "SyncOrdersLambdaPermissionPaulavadinhoS3": {
+                    "Type": "AWS::Lambda::Permission",
+                    "Properties": {
+                      "FunctionName": {
+                        "Fn::GetAtt": [
+                          "SyncOrdersLambdaFunction",
+                          "Arn"
+                        ]
+                      },
+                      "Action": "lambda:InvokeFunction",
+                      "Principal": "s3.amazonaws.com",
+                      "SourceArn": {
+                        "Fn::Join": [
+                          "",
+                          [
+                            "arn:",
+                            {
+                              "Ref": "AWS::Partition"
+                            },
+                            ":s3:::paulavadinho"
+                          ]
+                        ]
+                      },
+                      "SourceAccount": {
+                        "Ref": "AWS::AccountId"
+                      }
+                    }
+                  },
+                  "ChallengeBucket": {
+                    "Type": "AWS::S3::Bucket",
+                    "Properties": {
+                      "BucketName": "challenge-bucket737"
+                    }
+                  }
+                },
+                "Outputs": {
+                  "ServerlessDeploymentBucketName": {
+                    "Value": "serverless-framework-deployments-us-east-1-a0989c70-9232",
+                    "Export": {
+                      "Name": "sls-crm-erp-integration-dev-ServerlessDeploymentBucketName"
+                    }
+                  },
+                  "SyncOrdersLambdaFunctionQualifiedArn": {
+                    "Description": "Current Lambda function version",
+                    "Value": {
+                      "Ref": "SyncOrdersLambdaVersion05Chb5f1X7eDBTRfeTIQKOz9iznsyzQ5A9Rgoch4"
+                    },
+                    "Export": {
+                      "Name": "sls-crm-erp-integration-dev-SyncOrdersLambdaFunctionQualifiedArn"
+                    }
+                  },
+                  "ProcessDataLambdaFunctionQualifiedArn": {
+                    "Description": "Current Lambda function version",
+                    "Value": {
+                      "Ref": "ProcessDataLambdaVersionvMXQr1pBiKKfNyQNTUyxrlS2vJlI6toO2OWhnvvvA6s"
+                    },
+                    "Export": {
+                      "Name": "sls-crm-erp-integration-dev-ProcessDataLambdaFunctionQualifiedArn"
+                    }
+                  }
+                }
+              },
+              "vpc": {}
+            },
+            "functions": {
+              "syncOrders": {
+                "handler": "handler.sync_orders",
+                "name": "crm-erp-sync-orders",
+                "events": [
+                  {
+                    "s3": {
+                      "bucket": "paulavadinho",
+                      "event": "s3:ObjectCreated:*"
+                    }
+                  }
+                ],
+                "package": {},
+                "memory": 1024,
+                "timeout": 6,
+                "runtime": "python3.9",
+                "vpc": {},
+                "versionLogicalId": "SyncOrdersLambdaVersion05Chb5f1X7eDBTRfeTIQKOz9iznsyzQ5A9Rgoch4"
+              },
+              "processData": {
+                "handler": "handler.lambda_handler",
+                "name": "crm-erp-process-data",
+                "events": [],
+                "package": {},
+                "memory": 1024,
+                "timeout": 6,
+                "runtime": "python3.9",
+                "vpc": {},
+                "versionLogicalId": "ProcessDataLambdaVersionvMXQr1pBiKKfNyQNTUyxrlS2vJlI6toO2OWhnvvvA6s"
+              }
+            },
+            "resources": {
+              "Resources": {
+                "ChallengeBucket": {
+                  "Type": "AWS::S3::Bucket",
+                  "Properties": {
+                    "BucketName": "challenge-bucket737"
+                  }
+                }
+              },
+              "Outputs": {}
+            }
+          },
+          "configFileDirPath": "C:\\Users\\pedro\\AppData\\Local\\Python Projects\\python_portfolio",
+          "config": {
+            "type": "sls"
+          },
+          "options": {},
+          "stage": "dev",
+          "dashboard": null,
+          "logger": {
+            "namespace": "s:core:resolver:sls",
+            "prefix": null,
+            "prefixColor": null
+          },
+          "_credentialsPromise": "<REDACTED>"
+        },
+        "resolvers": {}
+      }
+    },
+    "composeServiceName": null,
+    "servicePath": "C:\\Users\\pedro\\AppData\\Local\\Python Projects\\python_portfolio",
+    "serviceConfigFileName": "serverless.yml",
+    "service": {
+      "service": "crm-erp-integration",
+      "provider": {
+        "name": "aws",
+        "runtime": "python3.9",
+        "region": "us-east-1",
+        "iamRoleStatements": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:PutObject"
+            ],
+            "Resource": "arn:aws:s3:::challenge-bucket737/*"
+          }
+        ],
+        "stage": "dev",
+        "versionFunctions": true,
+        "compiledCloudFormationTemplate": {
+          "AWSTemplateFormatVersion": "2010-09-09",
+          "Description": "The AWS CloudFormation template for this Serverless application",
+          "Resources": {
+            "SyncOrdersLogGroup": {
+              "Type": "AWS::Logs::LogGroup",
+              "Properties": {
+                "LogGroupName": "/aws/lambda/crm-erp-sync-orders"
+              }
+            },
+            "ProcessDataLogGroup": {
+              "Type": "AWS::Logs::LogGroup",
+              "Properties": {
+                "LogGroupName": "/aws/lambda/crm-erp-process-data"
+              }
+            },
+            "IamRoleLambdaExecution": {
+              "Type": "AWS::IAM::Role",
+              "Properties": {
+                "AssumeRolePolicyDocument": {
+                  "Version": "2012-10-17",
+                  "Statement": [
+                    {
+                      "Effect": "Allow",
+                      "Principal": {
+                        "Service": [
+                          "lambda.amazonaws.com"
+                        ]
+                      },
+                      "Action": [
+                        "sts:AssumeRole"
+                      ]
+                    }
+                  ]
+                },
+                "Policies": [
+                  {
+                    "PolicyName": {
+                      "Fn::Join": [
+                        "-",
+                        [
+                          "crm-erp-integration",
+                          "dev",
+                          "lambda"
+                        ]
+                      ]
+                    },
+                    "PolicyDocument": {
+                      "Version": "2012-10-17",
+                      "Statement": [
+                        {
+                          "Effect": "Allow",
+                          "Action": [
+                            "logs:CreateLogStream",
+                            "logs:CreateLogGroup",
+                            "logs:TagResource"
+                          ],
+                          "Resource": [
+                            {
+                              "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/crm-erp-sync-orders:*"
+                            },
+                            {
+                              "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/crm-erp-process-data:*"
+                            }
+                          ]
+                        },
+                        {
+                          "Effect": "Allow",
+                          "Action": [
+                            "logs:PutLogEvents"
+                          ],
+                          "Resource": [
+                            {
+                              "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/crm-erp-sync-orders:*:*"
+                            },
+                            {
+                              "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/crm-erp-process-data:*:*"
+                            }
+                          ]
+                        },
+                        {
+                          "Effect": "Allow",
+                          "Action": [
+                            "s3:PutObject"
+                          ],
+                          "Resource": "arn:aws:s3:::challenge-bucket737/*"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "Path": "/",
+                "RoleName": {
+                  "Fn::Join": [
+                    "-",
+                    [
+                      "crm-erp-integration",
+                      "dev",
+                      {
+                        "Ref": "AWS::Region"
+                      },
+                      "lambdaRole"
+                    ]
+                  ]
+                }
+              }
+            },
+            "SyncOrdersLambdaFunction": {
+              "Type": "AWS::Lambda::Function",
+              "Properties": {
+                "Code": {
+                  "S3Bucket": "serverless-framework-deployments-us-east-1-a0989c70-9232",
+                  "S3Key": "serverless/crm-erp-integration/dev/1734101680321-2024-12-13T14:54:40.321Z/crm-erp-integration.zip"
+                },
+                "Handler": "handler.sync_orders",
+                "Runtime": "python3.9",
+                "FunctionName": "crm-erp-sync-orders",
+                "MemorySize": 1024,
+                "Timeout": 6,
+                "Role": {
+                  "Fn::GetAtt": [
+                    "IamRoleLambdaExecution",
+                    "Arn"
+                  ]
+                }
+              },
+              "DependsOn": [
+                "SyncOrdersLogGroup"
+              ]
+            },
+            "ProcessDataLambdaFunction": {
+              "Type": "AWS::Lambda::Function",
+              "Properties": {
+                "Code": {
+                  "S3Bucket": "serverless-framework-deployments-us-east-1-a0989c70-9232",
+                  "S3Key": "serverless/crm-erp-integration/dev/1734101680321-2024-12-13T14:54:40.321Z/crm-erp-integration.zip"
+                },
+                "Handler": "handler.lambda_handler",
+                "Runtime": "python3.9",
+                "FunctionName": "crm-erp-process-data",
+                "MemorySize": 1024,
+                "Timeout": 6,
+                "Role": {
+                  "Fn::GetAtt": [
+                    "IamRoleLambdaExecution",
+                    "Arn"
+                  ]
+                }
+              },
+              "DependsOn": [
+                "ProcessDataLogGroup"
+              ]
+            },
+            "SyncOrdersLambdaVersion05Chb5f1X7eDBTRfeTIQKOz9iznsyzQ5A9Rgoch4": {
+              "Type": "AWS::Lambda::Version",
+              "DeletionPolicy": "Retain",
+              "Properties": {
+                "FunctionName": {
+                  "Ref": "SyncOrdersLambdaFunction"
+                },
+                "CodeSha256": "rk9TiQVS8Mulkm7/GhfEuFniDHqnUJBCY3Z7ApicHQ4="
+              }
+            },
+            "ProcessDataLambdaVersionvMXQr1pBiKKfNyQNTUyxrlS2vJlI6toO2OWhnvvvA6s": {
+              "Type": "AWS::Lambda::Version",
+              "DeletionPolicy": "Retain",
+              "Properties": {
+                "FunctionName": {
+                  "Ref": "ProcessDataLambdaFunction"
+                },
+                "CodeSha256": "rk9TiQVS8Mulkm7/GhfEuFniDHqnUJBCY3Z7ApicHQ4="
+              }
+            },
+            "S3BucketPaulavadinho": {
+              "Type": "AWS::S3::Bucket",
+              "Properties": {
+                "BucketName": "paulavadinho",
+                "NotificationConfiguration": {
+                  "LambdaConfigurations": [
+                    {
+                      "Event": "s3:ObjectCreated:*",
+                      "Function": {
+                        "Fn::GetAtt": [
+                          "SyncOrdersLambdaFunction",
+                          "Arn"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "DependsOn": [
+                "SyncOrdersLambdaPermissionPaulavadinhoS3"
+              ]
+            },
+            "SyncOrdersLambdaPermissionPaulavadinhoS3": {
+              "Type": "AWS::Lambda::Permission",
+              "Properties": {
+                "FunctionName": {
+                  "Fn::GetAtt": [
+                    "SyncOrdersLambdaFunction",
+                    "Arn"
+                  ]
+                },
+                "Action": "lambda:InvokeFunction",
+                "Principal": "s3.amazonaws.com",
+                "SourceArn": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition"
+                      },
+                      ":s3:::paulavadinho"
+                    ]
+                  ]
+                },
+                "SourceAccount": {
+                  "Ref": "AWS::AccountId"
+                }
+              }
+            },
+            "ChallengeBucket": {
+              "Type": "AWS::S3::Bucket",
+              "Properties": {
+                "BucketName": "challenge-bucket737"
+              }
+            }
+          },
+          "Outputs": {
+            "ServerlessDeploymentBucketName": {
+              "Value": "serverless-framework-deployments-us-east-1-a0989c70-9232",
+              "Export": {
+                "Name": "sls-crm-erp-integration-dev-ServerlessDeploymentBucketName"
+              }
+            },
+            "SyncOrdersLambdaFunctionQualifiedArn": {
+              "Description": "Current Lambda function version",
+              "Value": {
+                "Ref": "SyncOrdersLambdaVersion05Chb5f1X7eDBTRfeTIQKOz9iznsyzQ5A9Rgoch4"
+              },
+              "Export": {
+                "Name": "sls-crm-erp-integration-dev-SyncOrdersLambdaFunctionQualifiedArn"
+              }
+            },
+            "ProcessDataLambdaFunctionQualifiedArn": {
+              "Description": "Current Lambda function version",
+              "Value": {
+                "Ref": "ProcessDataLambdaVersionvMXQr1pBiKKfNyQNTUyxrlS2vJlI6toO2OWhnvvvA6s"
+              },
+              "Export": {
+                "Name": "sls-crm-erp-integration-dev-ProcessDataLambdaFunctionQualifiedArn"
+              }
+            }
+          }
+        },
+        "vpc": {}
+      },
+      "functions": {
+        "syncOrders": {
+          "handler": "handler.sync_orders",
+          "name": "crm-erp-sync-orders",
+          "events": [
+            {
+              "s3": {
+                "bucket": "paulavadinho",
+                "event": "s3:ObjectCreated:*"
+              }
+            }
+          ],
+          "package": {},
+          "memory": 1024,
+          "timeout": 6,
+          "runtime": "python3.9",
+          "vpc": {},
+          "versionLogicalId": "SyncOrdersLambdaVersion05Chb5f1X7eDBTRfeTIQKOz9iznsyzQ5A9Rgoch4"
+        },
+        "processData": {
+          "handler": "handler.lambda_handler",
+          "name": "crm-erp-process-data",
+          "events": [],
+          "package": {},
+          "memory": 1024,
+          "timeout": 6,
+          "runtime": "python3.9",
+          "vpc": {},
+          "versionLogicalId": "ProcessDataLambdaVersionvMXQr1pBiKKfNyQNTUyxrlS2vJlI6toO2OWhnvvvA6s"
+        }
+      },
+      "resources": {
+        "Resources": {
+          "ChallengeBucket": {
+            "Type": "AWS::S3::Bucket",
+            "Properties": {
+              "BucketName": "challenge-bucket737"
+            }
+          }
+        },
+        "Outputs": {}
+      }
+    },
+    "serviceRawFile": "service: crm-erp-integration\r\n\r\nprovider:\r\n  name: aws\r\n  runtime: python3.9\r\n  region: us-east-1\r\n  iamRoleStatements:\r\n    - Effect: \"Allow\"\r\n      Action:\r\n        - \"s3:PutObject\"\r\n      Resource:\r\n        - \"arn:aws:s3:::challenge-bucket737/*\"\r\n\r\nfunctions:\r\n  syncOrders:\r\n    handler: handler.sync_orders\r\n    name: crm-erp-sync-orders\r\n    events:\r\n      - s3:\r\n          bucket: paulavadinho\r\n          event: s3:ObjectCreated:*\r\n  processData:\r\n    handler: handler.lambda_handler\r\n    name: crm-erp-process-data\r\n\r\nresources:\r\n  Resources:\r\n    ChallengeBucket:\r\n      Type: AWS::S3::Bucket\r\n      Properties:\r\n        BucketName: challenge-bucket737",
+    "command": [
+      "deploy"
+    ],
+    "options": {},
+    "error": null,
+    "params": {},
+    "machineId": "f4300bb5cb01befe9b9da69db87bf646",
+    "stage": "dev",
+    "accessKeyV2": "<REDACTED>",
+    "accessKeyV1": "<REDACTED>",
+    "orgId": "4231d530-498b-46d2-b8bd-6c82d4231669",
+    "orgName": "pdrpmello",
+    "userId": "LYqD1MJFRmrC3fPzRW",
+    "dashboard": {
+      "isEnabledForService": false,
+      "requiredAuthentication": false,
+      "orgFeaturesInUse": null,
+      "orgObservabilityIntegrations": null,
+      "serviceAppId": null,
+      "serviceProvider": null,
+      "instanceParameters": null
+    },
+    "userName": "pdrpmello",
+    "subscription": null,
+    "userEmail": "pedroh723@gmail.com",
+    "serviceProviderAwsRegion": "us-east-1",
+    "serviceProviderAwsCredentials": "<REDACTED>",
+    "serviceProviderAwsAccountId": "122610489811",
+    "projectType": "traditional",
+    "versionSf": "4.4.16",
+    "serviceProviderAwsCfStackName": "crm-erp-integration-dev",
+    "integrations": {},
+    "serviceUniqueId": "arn:aws:cloudformation:us-east-1:122610489811:stack/crm-erp-integration-dev/95515580-b95c-11ef-8269-0affc143be6f",
+    "serviceProviderAwsCfStackId": "arn:aws:cloudformation:us-east-1:122610489811:stack/crm-erp-integration-dev/95515580-b95c-11ef-8269-0affc143be6f",
+    "serviceProviderAwsCfStackCreated": "2024-12-13T14:14:36.609Z",
+    "serviceProviderAwsCfStackUpdated": "2024-12-13T14:44:32.222Z",
+    "serviceProviderAwsCfStackStatus": "UPDATE_COMPLETE",
+    "serviceProviderAwsCfStackOutputs": [
+      {
+        "OutputKey": "SyncOrdersLambdaFunctionQualifiedArn",
+        "OutputValue": "arn:aws:lambda:us-east-1:122610489811:function:crm-erp-sync-orders:6",
+        "Description": "Current Lambda function version",
+        "ExportName": "sls-crm-erp-integration-dev-SyncOrdersLambdaFunctionQualifiedArn"
+      },
+      {
+        "OutputKey": "ProcessDataLambdaFunctionQualifiedArn",
+        "OutputValue": "arn:aws:lambda:us-east-1:122610489811:function:crm-erp-process-data:6",
+        "Description": "Current Lambda function version",
+        "ExportName": "sls-crm-erp-integration-dev-ProcessDataLambdaFunctionQualifiedArn"
+      },
+      {
+        "OutputKey": "ServerlessDeploymentBucketName",
+        "OutputValue": "serverless-framework-deployments-us-east-1-a0989c70-9232",
+        "ExportName": "sls-crm-erp-integration-dev-ServerlessDeploymentBucketName"
+      }
+    ]
+  }
+}
