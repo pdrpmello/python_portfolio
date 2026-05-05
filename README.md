@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # MSU Scraper
 
 Automação de coleta de preços de NFTs no marketplace do MapleStory Universe (msu.io), com salvamento automático no Google Sheets.
@@ -67,3 +68,7 @@ msu_scraper/
 ├── requirements.txt
 └── README.md
 ```
+=======
+# Python portfolio
+ Portfolio with Junior Python Projects.
+>>>>>>> 2ed6f18d149884fd3acde35354d50133c5a1aa0f
