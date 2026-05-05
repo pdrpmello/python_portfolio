@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Entry point for the msu.io NFT scraper."""
+"""Entry point for the MSU scraper."""
 
 from __future__ import annotations
 
@@ -14,5 +14,5 @@ if str(_ROOT) not in sys.path:
 from scraper import main
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":              
     main()
