@@ -1,0 +1,11 @@
+# Segredos — NUNCA versionar (PRD §7)
+config.ini
+
+# Artefatos de execução
+debug/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
