@@ -107,3 +107,77 @@ def filter_bookable_periods(
     bookable = tuple(p for p in free if p.duration_minutes() >= min_minutes)
     too_short = tuple(p for p in free if p.duration_minutes() < min_minutes)
     return bookable, too_short
+
+
+def _clip_to_window(period: TimePeriod, window: TimePeriod) -> TimePeriod | None:
+    start = max(period.start, window.start)
+    end = min(period.end, window.end)
+    if start >= end:
+        return None
+    return TimePeriod(start=start, end=end, label=period.label)
+
+
+def classify_day_periods(
+    window: TimePeriod, raw_busy: Iterable[TimePeriod], rules: AvailabilityRules
+) -> tuple[ClassifiedPeriod, ...]:
+    """Timeline do relatório: ocupados com horários originais (recortados à
+    janela); vãos livres calculados sobre os ocupados bufferizados (spec §1).
+    """
+    raw_busy = tuple(raw_busy)
+    entries: list[ClassifiedPeriod] = []
+    for period in raw_busy:
+        clipped = _clip_to_window(period, window)
+        if clipped is None:
+            continue
+        reason = f"reservado ({clipped.label})" if clipped.label else "reservado"
+        entries.append(
+            ClassifiedPeriod(period=clipped, status=PeriodStatus.BUSY, reason=reason)
+        )
+    buffered = apply_turnaround_buffer(raw_busy, rules.turnaround_minutes)
+    free = subtract_periods(window, buffered)
+    bookable, too_short = filter_bookable_periods(free, rules.min_flight_minutes)
+    for period in bookable:
+        entries.append(
+            ClassifiedPeriod(period=period, status=PeriodStatus.AVAILABLE, reason="livre")
+        )
+    for period in too_short:
+        entries.append(
+            ClassifiedPeriod(
+                period=period,
+                status=PeriodStatus.BUSY,
+                reason=(
+                    f"vão curto ({period.duration_minutes()}min "
+                    f"< {rules.min_flight_minutes}min)"
+                ),
+            )
+        )
+    entries.sort(key=lambda e: (e.period.start, e.period.end))
+    return tuple(entries)
+
+
+def enrich_day_schedule(
+    day_schedule: DaySchedule, rules: AvailabilityRules
+) -> DayAvailability:
+    window = operating_window(
+        day_schedule.day, day_schedule.sunrise, day_schedule.sunset
+    )
+    resources: list[ResourceAvailability] = []
+    for resource in day_schedule.resources:
+        if window is None:
+            periods: tuple[ClassifiedPeriod, ...] = ()
+        else:
+            periods = classify_day_periods(window, resource.busy_periods, rules)
+        resources.append(
+            ResourceAvailability(
+                resource_name=resource.name,
+                resource_model=resource.model,
+                periods=periods,
+            )
+        )
+    return DayAvailability(
+        day=day_schedule.day,
+        sunrise=day_schedule.sunrise,
+        sunset=day_schedule.sunset,
+        window=window,
+        resources=tuple(resources),
+    )
