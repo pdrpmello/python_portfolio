@@ -140,5 +140,132 @@ class RulesDefaultsTest(unittest.TestCase):
         self.assertEqual(rules.max_flight_minutes, 120)
 
 
+from availability import classify_day_periods, enrich_day_schedule
+from models import DaySchedule, PeriodStatus, ResourceSchedule
+
+
+class ClassifyDayPeriodsTest(unittest.TestCase):
+    WINDOW = TimePeriod(start=time(6, 0), end=time(9, 30))
+    RULES = AvailabilityRules(
+        turnaround_minutes=30, min_flight_minutes=60, max_flight_minutes=120
+    )
+
+    def test_empty_schedule_is_one_available_block(self):
+        entries = classify_day_periods(self.WINDOW, [], self.RULES)
+        self.assertEqual(len(entries), 1)
+        self.assertIs(entries[0].status, PeriodStatus.AVAILABLE)
+        self.assertEqual(entries[0].reason, "livre")
+        self.assertEqual(
+            (entries[0].period.start, entries[0].period.end), (time(6, 0), time(9, 30))
+        )
+
+    def test_busy_with_label_and_free_gap(self):
+        # Voo 06:00–07:00: com buffer de 30min o vão livre começa 07:30.
+        # 07:30–09:30 = 2h ≥ 1h → 🟢.
+        entries = classify_day_periods(
+            self.WINDOW,
+            [TimePeriod(start=time(6, 0), end=time(7, 0), label="João")],
+            self.RULES,
+        )
+        self.assertEqual(len(entries), 2)
+        self.assertIs(entries[0].status, PeriodStatus.BUSY)
+        self.assertEqual(entries[0].reason, "reservado (João)")
+        self.assertEqual(
+            (entries[0].period.start, entries[0].period.end), (time(6, 0), time(7, 0))
+        )
+        self.assertIs(entries[1].status, PeriodStatus.AVAILABLE)
+        self.assertEqual(
+            (entries[1].period.start, entries[1].period.end),
+            (time(7, 30), time(9, 30)),
+        )
+
+    def test_short_gap_reported_busy(self):
+        # Voos 06:00–07:00 e 08:30–09:30 bufferizados deixam 07:30–08:00
+        # (30min < 60min) → 🔴 "vão curto".
+        entries = classify_day_periods(
+            self.WINDOW,
+            [
+                TimePeriod(start=time(6, 0), end=time(7, 0)),
+                TimePeriod(start=time(8, 30), end=time(9, 30)),
+            ],
+            self.RULES,
+        )
+        reasons = [e.reason for e in entries]
+        self.assertIn("vão curto (30min < 60min)", reasons)
+        short = next(e for e in entries if "vão curto" in e.reason)
+        self.assertIs(short.status, PeriodStatus.BUSY)
+        self.assertEqual(
+            (short.period.start, short.period.end), (time(7, 30), time(8, 0))
+        )
+
+    def test_busy_outside_window_dropped_from_timeline(self):
+        entries = classify_day_periods(
+            self.WINDOW,
+            [TimePeriod(start=time(14, 0), end=time(15, 0))],
+            self.RULES,
+        )
+        self.assertTrue(all(e.status is PeriodStatus.AVAILABLE for e in entries))
+
+    def test_busy_crossing_window_edge_clipped(self):
+        entries = classify_day_periods(
+            self.WINDOW,
+            [TimePeriod(start=time(5, 0), end=time(6, 30))],
+            self.RULES,
+        )
+        busy = [e for e in entries if e.status is PeriodStatus.BUSY and e.reason.startswith("reservado")]
+        self.assertEqual(
+            (busy[0].period.start, busy[0].period.end), (time(6, 0), time(6, 30))
+        )
+
+    def test_timeline_sorted_by_start(self):
+        entries = classify_day_periods(
+            self.WINDOW,
+            [
+                TimePeriod(start=time(8, 0), end=time(9, 0)),
+                TimePeriod(start=time(6, 0), end=time(6, 30)),
+            ],
+            self.RULES,
+        )
+        starts = [e.period.start for e in entries]
+        self.assertEqual(starts, sorted(starts))
+
+
+class EnrichDayScheduleTest(unittest.TestCase):
+    RULES = AvailabilityRules()
+
+    def test_enriches_all_resources_on_monday(self):
+        day = DaySchedule(
+            day=MONDAY,
+            sunrise=SUNRISE,
+            sunset=SUNSET,
+            resources=(
+                ResourceSchedule(name="PT-ABC", model="C-152"),
+                ResourceSchedule(name="Stand By"),
+            ),
+        )
+        enriched = enrich_day_schedule(day, self.RULES)
+        self.assertEqual(enriched.day, MONDAY)
+        self.assertEqual(
+            (enriched.window.start, enriched.window.end), (SUNRISE, time(9, 30))
+        )
+        self.assertEqual(len(enriched.resources), 2)
+        self.assertEqual(enriched.resources[0].resource_name, "PT-ABC")
+        self.assertEqual(enriched.resources[0].resource_model, "C-152")
+        self.assertIs(
+            enriched.resources[0].periods[0].status, PeriodStatus.AVAILABLE
+        )
+
+    def test_day_without_window(self):
+        day = DaySchedule(
+            day=MONDAY,
+            sunrise=time(10, 0),
+            sunset=SUNSET,
+            resources=(ResourceSchedule(name="PT-ABC", model="C-152"),),
+        )
+        enriched = enrich_day_schedule(day, self.RULES)
+        self.assertIsNone(enriched.window)
+        self.assertEqual(enriched.resources[0].periods, ())
+
+
 if __name__ == "__main__":
     unittest.main()
