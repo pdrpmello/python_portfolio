@@ -2,8 +2,8 @@
 
 Monitor **read-only** da escala de horários de voo do sistema SAGA do
 Aeroclube do Espírito Santo. Varre a agenda dos próximos dias, aplica as
-regras operacionais do clube e envia ao Discord um relatório do que está
-🟢 livre e 🔴 ocupado, por aeronave e por dia.
+regras operacionais do clube e envia ao Discord as janelas 🟢 livres de
+cada aeronave, dia a dia — avisando quando abre horário novo.
 
 ## Garantia read-only
 
@@ -67,8 +67,8 @@ formato das janelas mudou — evita um falso "🔔 Abriu horário!").
   nunca de API de astronomia externa.
 - Buffer de turnaround entre voos da mesma aeronave: `turnaround_minutes`
   (padrão 30 min).
-- Vão livre menor que `min_flight_minutes` aparece como 🔴 "vão curto":
-  não é reservável.
+- Vão livre menor que `min_flight_minutes` não é reservável e fica de
+  fora do relatório (só janelas 🟢 reserváveis são listadas).
 - A janela é arredondada na grade de 30 min: começa no nascer do sol
   arredondado para cima (06:17 → 06:30) e, no sábado, termina no pôr do
   sol arredondado para baixo (17:23 → 17:00).
