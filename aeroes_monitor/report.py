@@ -91,3 +91,15 @@ def build_summary(
     else:
         lines.append("Nenhum horário disponível encontrado. 😕")
     return "\n".join(lines)
+
+
+def build_openings_message(
+    new_windows: Sequence[tuple[str, str, str, str]]
+) -> str:
+    """Aviso enxuto de janelas 🟢 que não existiam na varredura anterior."""
+    lines = ["🔔 **Abriu horário!**"]
+    for day_iso, resource, start, end in new_windows:
+        lines.append(
+            f"🟢 {_fmt_date(date.fromisoformat(day_iso))}: {resource} {start}–{end}"
+        )
+    return "\n".join(lines)
