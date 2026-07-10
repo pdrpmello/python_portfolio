@@ -8,8 +8,8 @@ regras operacionais do clube e envia ao Discord um relatório do que está
 ## Garantia read-only
 
 Este programa **não faz reservas e não altera nada no SAGA** (ADR-0001).
-Ele apenas: autentica → navega → lê o HTML exibido → calcula localmente →
-reporta no Discord. O único formulário que ele submete é o de **login**.
+Ele apenas: autentica → navega → lê os dados que a página carrega →
+calcula localmente → reporta no Discord. O único formulário que ele submete é o de **login**.
 A ação de reservar continua 100% manual, no próprio SAGA.
 
 ## Requisitos
@@ -46,6 +46,13 @@ senha e webhook automaticamente.
 Códigos de saída de `--once`: `0` sucesso, `1` varredura falhou, `2` erro
 de configuração.
 
+A primeira varredura estabelece a **baseline**: envia o resumo e o
+relatório completo e grava o snapshot das janelas 🟢 em `state.json`
+(não versionado). Das varreduras seguintes em diante vale a política
+"**só aberturas novas**": o Discord só recebe mensagem quando surge uma
+janela 🟢 que não existia no snapshot anterior — janela que some é
+silêncio. Apague `state.json` para forçar uma nova baseline.
+
 ## Regras de disponibilidade (PRD §6)
 
 | Dia | Janela permitida |
@@ -54,28 +61,30 @@ de configuração.
 | Sábado | nascer do sol → pôr do sol |
 | Domingo | nascer do sol → 12:00 |
 
-- Nascer/pôr do sol vêm **da própria página do SAGA** (ADR-0008), nunca de
-  API externa.
+- Nascer/pôr do sol vêm **do próprio SAGA** (endpoint interno, ADR-0008),
+  nunca de API de astronomia externa.
 - Buffer de turnaround entre voos da mesma aeronave: `turnaround_minutes`
   (padrão 30 min).
 - Vão livre menor que `min_flight_minutes` aparece como 🔴 "vão curto":
   não é reservável.
 
-## Calibração de seletores (primeiro uso)
+## Calibração de seletores (só login/sessão)
 
-Os seletores CSS padrão são um palpite razoável — o SAGA real quase
-certamente usa outros. Para calibrar (ADR-0003):
+Os seletores CSS cobrem **apenas login e detecção de sessão** — a escala
+não é raspada do DOM: ela é lida da variável `allSchedules` que a própria
+página carrega (ADR-0010). Os defaults de login já batem com o SAGA real
+(calibrados em 2026-07-09); só recalibre se o login quebrar (ADR-0003):
 
 1. Rode com `headless = false` para ver o browser.
-2. Abra o SAGA manualmente no Chrome, faça login e vá até a escala.
+2. Abra o SAGA manualmente no Chrome e vá até a tela de login.
 3. F12 (DevTools) → botão de inspecionar → clique no elemento desejado
-   (campo de e-mail, linha de aeronave, texto do nascer do sol, botão de
-   próximo dia, etc.).
+   (campo de e-mail, senha, botão de entrar; para `logged_in_marker`,
+   algo sempre **visível** após o login).
 4. Anote um seletor CSS estável (prefira `name`, `id` ou classes
    descritivas; evite classes geradas/aleatórias).
 5. Descomente `[selectors]` no `config.ini` e preencha as chaves — um
    seletor por linha; a ordem é a ordem de tentativa.
-6. Rode `python main.py --once` e ajuste até a varredura completar.
+6. Rode `python main.py --once` e ajuste até o login completar.
 
 Em caso de falha, o monitor salva screenshot + HTML em `debug/` — use-os
 para descobrir o que mudou.
@@ -88,13 +97,14 @@ para descobrir o que mudou.
 | `config.py` | `config.ini` → dataclasses validadas (ADR-0005) |
 | `models.py` | dataclasses de domínio, sem dependências |
 | `availability.py` | regras de disponibilidade puras (ADR-0004) |
-| `report.py` | formatação 🟢/🔴 do relatório |
+| `notifications.py` | política "só aberturas novas" + `state.json` |
+| `report.py` | formatação 🟢/🔴 do relatório e das aberturas |
 | `discord.py` | webhook + fragmentação em 2000 chars (ADR-0006) |
 | `browser.py` | Chrome/Selenium, esperas, artefatos de debug |
 | `login.py` | autenticação e detecção de sessão expirada |
-| `scheduler.py` | varredura dia a dia, erros recuperáveis |
-| `aircraft.py` | parsing das agendas (aeronaves + Stand By) |
-| `utils.py` | parsing puro de texto (horários, datas, sol) |
+| `scheduler.py` | aquisição: `allSchedules` + sol, na sessão autenticada (ADR-0010) |
+| `saga_data.py` | JSON/XML brutos do SAGA → domínio, puro (ADR-0010) |
+| `utils.py` | parsing puro de texto (horários, matrículas) |
 
 Decisões registradas em [`docs/adr/`](docs/adr/README.md); requisitos em
 [`docs/PRD.md`](docs/PRD.md).
@@ -110,10 +120,15 @@ testada com fakes; nenhum teste abre Chrome nem toca o SAGA real.
 
 ## Solução de problemas
 
-- **`TimeoutException: Nenhum seletor visível`** — seletor desatualizado;
-  recalibre (seção acima) usando os artefatos de `debug/`.
-- **`Nascer do sol não encontrado`** — a página do dia não exibiu o
-  horário; o dia é pulado e reportado com ⚠️ (ADR-0008).
+- **`TimeoutException: Nenhum seletor visível`** — seletor de login
+  desatualizado; recalibre (seção acima) usando os artefatos de `debug/`.
+- **`allSchedules não encontrado na página da escala`** — confira
+  `selenium.schedule_url` (deve apontar para Escala → Meus Voos). Se a URL
+  está certa, o SAGA mudou o contrato da página (ADR-0010) — inspecione os
+  artefatos de `debug/`.
+- **Sol indisponível** — o endpoint `/aisweb/sun/SBVT` falhou; a varredura
+  sai sem janelas e reporta ⚠️ (ADR-0008). Normaliza sozinho quando o
+  endpoint voltar.
 - **Nada chega no Discord** — teste o webhook com
   `curl -X POST -H "Content-Type: application/json" -d "{\"content\": \"teste\"}" URL_DO_WEBHOOK`.
 - **Sessão expira no meio** — reautenticação é automática (F2); veja o log.
@@ -121,5 +136,9 @@ testada com fakes; nenhum teste abre Chrome nem toca o SAGA real.
 ## Limitações conhecidas
 
 - Polling por intervalo, sem notificação em tempo real (fora de escopo).
-- Sem histórico entre execuções (sem banco de dados).
-- Uma mudança de layout do SAGA exige recalibração manual de seletores.
+- Histórico mínimo: só o snapshot da última varredura em `state.json`
+  (sem banco de dados).
+- Nascer/pôr do sol dos dias futuros é aproximação do valor de hoje —
+  desvio ≤ ~7 min no fim da janela de 30 dias (ADR-0008).
+- Uma mudança no SAGA exige recalibração dos seletores de login ou pode
+  quebrar o contrato `allSchedules` (ADR-0010).

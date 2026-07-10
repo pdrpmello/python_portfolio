@@ -11,3 +11,4 @@
 | [0007](0007-manual-aircraft-allowlist.md) | Lista manual de aeronaves operacionais |
 | [0008](0008-sunrise-sunset-from-saga-page.md) | Nascer/pôr do sol lidos exclusivamente da página do SAGA |
 | [0009](0009-in-process-polling-loop.md) | Loop de polling in-process em vez de agendador externo |
+| [0010](0010-allschedules-js-variable.md) | Agendamentos lidos da variável JS allSchedules |
