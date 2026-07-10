@@ -20,3 +20,9 @@ As janelas de disponibilidade (ver PRD, seção 6) dependem do horário de nasce
 
 ## Alternativas consideradas
 - **API de astronomia externa** (ex.: cálculo por coordenadas fixas do aeródromo): mais resiliente a mudanças de layout, mas introduz risco de divergência silenciosa em relação à referência real usada pelo clube, e uma dependência de rede adicional. Rejeitada em favor de fidelidade à fonte oficial.
+
+## Emenda (2026-07-09)
+A página da escala deixou de ser raspada ([[0010-allschedules-js-variable]]) e não exibe nascer/pôr do sol como texto; o dado vem agora do endpoint do próprio SAGA `/aisweb/sun/SBVT`, consultado na mesma sessão autenticada (fetch same-origin em `scheduler.py`, parse puro em `saga_data.py`). O princípio da decisão — fidelidade à fonte que o clube usa, nada de API de astronomia externa — permanece. Limitações do endpoint:
+
+- Ele só serve o **dia atual**, em **UTC**. O valor de hoje, convertido para hora local (America/Sao_Paulo), aplica-se à janela inteira de varredura e é rotulado como aproximado — desvio ≤ ~7 min no dia 30 da janela.
+- Sol indisponível (endpoint fora do ar, XML inválido) ⇒ varredura **degradada, sem janelas**: nenhum dia é relatado e um erro recuperável (⚠️) explica o motivo — mantendo o espírito de "falhar explicitamente em vez de calcular um valor alternativo".

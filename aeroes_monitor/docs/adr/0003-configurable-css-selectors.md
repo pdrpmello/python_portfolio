@@ -20,3 +20,6 @@ Todos os seletores usados pelo Selenium (`login_email`, `schedule_container`, `a
 
 ## Alternativas consideradas
 - **Seletores hardcoded no código**: mais simples, mas exigiria alteração de código a cada mudança de layout do SAGA, contrariando o objetivo de manutenção de baixo esforço para uma dependência externa fora de controle do autor.
+
+## Emenda (2026-07-09)
+Com [[0010-allschedules-js-variable]], a escala não é mais raspada do DOM: os seletores de agenda (`schedule_container`, `resource_row`, `event_item`, `sunrise_text`, etc.) foram removidos dos defaults e do `config.ini.example`. A seção `[selectors]` passa a cobrir **apenas login/sessão** (`login_username`, `login_password`, `login_submit`, `login_form`, `logged_in_marker`). A decisão em si — seletores externalizados com defaults embutidos — permanece válida para o que restou.
