@@ -51,9 +51,13 @@ janelas livres dos próximos dias (dias e aeronaves sem janela 🟢 ficam de
 fora) e grava o snapshot em `state.json` (não versionado). Das varreduras
 seguintes em diante vale a política "**só aberturas novas**": o Discord só
 recebe mensagem quando surge uma janela 🟢 que não existia no snapshot
-anterior — janela que some é silêncio. Apague `state.json` para forçar uma
-nova baseline (faça isso também após atualizar o monitor, se a regra ou o
-formato das janelas mudou — evita um falso "🔔 Abriu horário!").
+anterior — janela que some é silêncio. Duas guardas anti-ruído: dia que
+acabou de entrar no horizonte de varredura não conta como abertura, e
+janela que apenas **encolheu** (alguém reservou um pedaço dela) também
+não — só janela com tempo novo de verdade notifica. Apague `state.json`
+para forçar uma nova baseline manualmente; quando o formato do snapshot
+muda numa atualização do monitor, a versão do arquivo re-baselineia
+sozinha (um relatório completo novo, sem alarme falso).
 
 ## Regras de disponibilidade (PRD §6)
 
