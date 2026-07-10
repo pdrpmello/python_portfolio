@@ -60,9 +60,6 @@ class DiscordNotifier:
                 time.sleep(_CHUNK_PAUSE_SECONDS)  # rate limit do webhook
         logger.info("Mensagem enviada ao Discord (%d fragmento(s))", len(chunks))
 
-    def send_scan_started(self) -> None:
-        self.send_message("🔎 Iniciando varredura da escala do SAGA...")
-
     def send_summary(self, text: str) -> None:
         self.send_message(text)
 

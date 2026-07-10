@@ -88,13 +88,11 @@ class DiscordNotifierTest(unittest.TestCase):
     def test_convenience_methods(self, post):
         post.return_value = self._response()
         notifier = DiscordNotifier(WEBHOOK)
-        notifier.send_scan_started()
         notifier.send_summary("resumo")
         notifier.send_report("relatório")
         contents = [c.kwargs["json"]["content"] for c in post.call_args_list]
-        self.assertIn("🔎", contents[0])
-        self.assertEqual(contents[1], "resumo")
-        self.assertEqual(contents[2], "relatório")
+        self.assertEqual(contents[0], "resumo")
+        self.assertEqual(contents[1], "relatório")
 
 
 if __name__ == "__main__":
