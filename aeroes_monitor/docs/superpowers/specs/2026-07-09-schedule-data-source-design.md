@@ -40,6 +40,9 @@ página da escala difere do que os defaults do ADR-0003 supunham:
    SBVT. O dado continua vindo exclusivamente do SAGA (emenda mínima ao
    ADR-0008). Rejeitadas: cálculo local por efeméride (revoga o ADR) e o modo
    estrito (29 dias de ⚠️ inutilizam o relatório).
+3. **Notificação por diff ("só aberturas novas")**, com varredura a cada
+   **900 s**. Rejeitadas: "só quando houver 🟢" (com 30 dias de janela quase
+   sempre há 🟢 ⇒ spam igual) e digest diário (adiável; YAGNI por ora).
 
 ## Fluxo da varredura
 
@@ -64,7 +67,11 @@ página da escala difere do que os defaults do ADR-0003 supunham:
 | `scheduler.py` | Encolhe: adquirir JSON + sol, delegar construção a funções puras novas (testáveis sem browser). Some o loop next-day/`_advance_day`. Relogin (F2) preservado. |
 | `aircraft.py` | Aposentado (parsing DOM não usado no caminho principal) — removido com seus testes. |
 | `config.py` | `DEFAULT_SELECTORS`: saem chaves de escala não usadas; ficam login/sessão e o necessário p/ "página da escala carregou". |
-| `login.py`, `browser.py`, `models.py`, `availability.py`, `report.py`, `discord.py` | Intactos. |
+| `notifications.py` (novo) | Política pura de diff (janelas novas, transições de erro) + persistência do `state.json`. Testável sem browser/rede. |
+| `main.py` | Orquestra a política: baseline vs. diff, remove `send_scan_started`. |
+| `report.py` | Ganha formatação da mensagem de aberturas novas. |
+| `discord.py` | Enxuga métodos que a política aposentar. |
+| `login.py`, `browser.py`, `models.py`, `availability.py` | Intactos. |
 | `utils.py` | `extract_sunrise/extract_sunset` de texto de página saem se nada mais usar; parse do XML do sol entra como função pura. |
 | `config.ini.example` | Atualizado: `schedule_url` preenchido de exemplo, seção `[selectors]` enxuta, comentário sobre marcador visível. |
 
@@ -82,6 +89,23 @@ página da escala difere do que os defaults do ADR-0003 supunham:
 - Dias futuros: nota única de sol aproximado (valor oficial de hoje, fonte
   SAGA/AISWEB SBVT; desvio ≤ ~7 min no fim da janela).
 
+## Política de notificação (Discord)
+
+Objetivo: rodar a cada 15 min sem incomodar — sinal, não ruído.
+
+- **Baseline**: na primeira varredura do processo (ou quando `state.json` não
+  existe/está corrompido) envia resumo + relatório completos, uma vez.
+- **Aberturas novas**: varreduras seguintes comparam o conjunto de janelas 🟢
+  `(dia, recurso, início, fim)` com o da varredura anterior e notificam **só
+  as janelas que apareceram** (mensagem enxuta, ex.:
+  "🟢 Abriu: PP-AYB sáb 12/07 06:17–09:30"). Janela que sumiu = silêncio.
+- **Erros**: notifica só na transição ok→falha e na recuperação falha→ok;
+  falhas repetidas não repetem aviso. A mensagem "varredura iniciada" deixa de
+  existir.
+- **Estado**: snapshot das janelas + último status em `state.json` ao lado do
+  `config.ini` (gitignored). Corrompido/ausente ⇒ tratar como baseline.
+- Intervalo alvo no config: `check_interval_seconds = 900`.
+
 ## Documentação
 
 - **ADR-0010** (novo): agendamentos lidos da variável JS `allSchedules`;
@@ -96,7 +120,9 @@ página da escala difere do que os defaults do ADR-0003 supunham:
 
 - Novas funções puras com `unittest`, sem browser (padrão do projeto):
   JSON→`DaySchedule` (filtros de status/matrícula, Stand By, dia vazio,
-  janela/truncamento), parse do XML do sol, conversão UTC→local.
+  janela/truncamento), parse do XML do sol, conversão UTC→local, política de
+  notificação (baseline, abertura nova, janela removida, transições de erro,
+  `state.json` corrompido).
 - Camada Selenium continua testada com fakes (execute_script/fetch fakeados).
 - Testes do parsing DOM removidos junto com `aircraft.py`.
 - Validação final: `python main.py --once` ponta a ponta com relatório
@@ -106,5 +132,7 @@ página da escala difere do que os defaults do ADR-0003 supunham:
 
 1. `main.py --once` sai com código 0 e publica no Discord o relatório 🟢/🔴
    dos 30 dias para PP-AYB e PT-JTK (+ Stand By), sem ⚠️ espúrios.
-2. Suíte `unittest` verde, sem abrir Chrome nem tocar o SAGA real.
-3. ADRs/README refletem a arquitetura real.
+2. Em modo contínuo (900 s), o Discord recebe mensagem apenas na baseline,
+   quando abre janela nova e nas transições de erro — nunca a cada varredura.
+3. Suíte `unittest` verde, sem abrir Chrome nem tocar o SAGA real.
+4. ADRs/README refletem a arquitetura real.
