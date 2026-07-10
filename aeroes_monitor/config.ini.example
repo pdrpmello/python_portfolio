@@ -16,7 +16,7 @@ webhook_url = https://discord.com/api/webhooks/SEU/WEBHOOK
 ; Quantos dias varrer a partir do dia exibido
 max_days = 30
 ; Intervalo entre varreduras no modo contínuo (segundos, mínimo 60)
-check_interval_seconds = 3600
+check_interval_seconds = 900
 ; Intervalo mínimo entre voos consecutivos da mesma aeronave (minutos)
 turnaround_minutes = 30
 ; Um vão livre só é 🟢 se durar pelo menos isto (minutos)
@@ -27,8 +27,9 @@ max_flight_minutes = 120
 [selenium]
 ; URL de login do SAGA
 base_url = https://saga.example.com/login
-; URL direta da escala (deixe vazio se a página pós-login já for a escala)
-schedule_url =
+; URL da página da escala (menu Escala → Meus Voos). É dela que o monitor
+; lê a variável allSchedules (ADR-0010).
+schedule_url = https://aeroes.saga.aero/schedules/personal
 ; true = Chrome invisível; use false para calibrar seletores olhando a página
 headless = true
 page_load_timeout_seconds = 30
@@ -55,28 +56,23 @@ file =
 ;[selectors]
 ;login_username =
 ;    input[name="email"]
+;    input[type="email"]
+;    input[name="username"]
 ;    #email
 ;login_password =
+;    input[name="password"]
 ;    input[type="password"]
+;    #password
 ;login_submit =
 ;    button[type="submit"]
+;    input[type="submit"]
+;    .btn-login
 ;login_form =
 ;    form.login
+;    form#login
+;    input[type="password"]
 ;logged_in_marker =
-;    a[href*="logout"]
-;schedule_container =
-;    .schedule
-;schedule_date =
-;    .schedule-date
-;next_day_button =
-;    .next-day
-;sunrise_text =
-;    .sunrise
-;sunset_text =
-;    .sunset
-;resource_row =
-;    .schedule-row
-;resource_name =
-;    .resource-name
-;event_item =
-;    .event
+;    #navbarDropdownProfile
+;    #menuSearch
+;    a.nav-link[href="/dashboard"]
+;    .user-menu

@@ -2,6 +2,8 @@
 
 Seletores CSS ficam em [selectors] com defaults embutidos (ADR-0003):
 um seletor por linha (vírgula é sintaxe CSS válida, não separador).
+Hoje cobrem só login/sessão — a leitura da agenda usa a variável
+allSchedules exposta pela página, não mais scraping de DOM (ADR-0010).
 """
 from __future__ import annotations
 
@@ -25,15 +27,14 @@ DEFAULT_SELECTORS: dict[str, tuple[str, ...]] = {
     "login_password": ('input[name="password"]', 'input[type="password"]', "#password"),
     "login_submit": ('button[type="submit"]', 'input[type="submit"]', ".btn-login"),
     "login_form": ("form.login", "form#login", 'input[type="password"]'),
-    "logged_in_marker": (".user-menu", ".logout", 'a[href*="logout"]', ".user-name"),
-    "schedule_container": (".schedule", ".agenda", "#schedule", "table.schedule"),
-    "schedule_date": (".schedule-date", ".agenda-data", ".current-date", "h2.date"),
-    "next_day_button": (".next-day", 'button[title*="róximo"]', 'a[rel="next"]'),
-    "sunrise_text": (".sunrise", ".nascer-do-sol", ".sun-info"),
-    "sunset_text": (".sunset", ".por-do-sol", ".sun-info"),
-    "resource_row": (".schedule-row", "tr.aircraft-row", ".resource-row"),
-    "resource_name": (".resource-name", ".aircraft-name", "td:first-child"),
-    "event_item": (".event", ".booking", ".reserved-slot"),
+    # Precisa estar VISÍVEL pós-login (o a[href*="logout"] fica oculto no
+    # dropdown do perfil do SAGA) — calibrado em 2026-07-09.
+    "logged_in_marker": (
+        "#navbarDropdownProfile",
+        "#menuSearch",
+        'a.nav-link[href="/dashboard"]',
+        ".user-menu",
+    ),
 }
 
 
