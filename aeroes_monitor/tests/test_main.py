@@ -116,6 +116,7 @@ class RunScanTest(unittest.TestCase):
         self.assertTrue(run_scan(_config(), self.state_path))
         notifier.send_message.assert_called_once()
         self.assertIn("Abriu horário", notifier.send_message.call_args.args[0])
+        self.assertIn("PT-ABC C-152", notifier.send_message.call_args.args[0])
         notifier.send_report.assert_not_called()
 
     def test_error_notifies_only_on_transition(

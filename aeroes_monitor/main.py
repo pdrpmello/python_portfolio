@@ -111,7 +111,9 @@ def run_scan(config: AppConfig, state_path: Path) -> bool:
                 notifier.send_message("✅ Varredura voltou a funcionar.")
             new_windows = diff_new_windows(previous, windows)
             if new_windows:
-                notifier.send_message(build_openings_message(new_windows))
+                notifier.send_message(
+                    build_openings_message(new_windows, config.aircraft)
+                )
         save_state(
             state_path,
             NotifyState(
