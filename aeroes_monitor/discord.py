@@ -15,27 +15,37 @@ logger = logging.getLogger(__name__)
 
 DISCORD_MESSAGE_LIMIT = 2000
 _CHUNK_PAUSE_SECONDS = 0.5
+_FENCE = "```"
+# Reserva para o fechamento "\n```" caber quando o corte cai dentro de um bloco.
+_FENCE_RESERVE = len("\n" + _FENCE)
 
 
 def split_message(text: str, limit: int = DISCORD_MESSAGE_LIMIT) -> list[str]:
-    """Fragmenta preservando quebras de linha; corte duro só quando uma
-    única linha excede o limite. Nunca produz chunk vazio."""
+    """Fragmenta preservando quebras de linha e cercas ``` balanceadas:
+    corte dentro de um bloco fecha a cerca no fragmento e a reabre no
+    seguinte (linha exatamente ``` alterna o estado; o gerador só emite
+    cercas nuas). Corte duro só quando uma única linha excede o limite
+    (não ocorre com o gerador; aí as cercas ficam por conta do chamador).
+    Nunca produz chunk vazio."""
     if not text:
         return []
     chunks: list[str] = []
     current = ""
+    in_fence = False
     for line in text.split("\n"):
+        line_in_fence = in_fence != (line == _FENCE)  # estado APÓS esta linha
+        reserve = _FENCE_RESERVE if line_in_fence else 0
         candidate = f"{current}\n{line}" if current else line
-        if len(candidate) <= limit:
-            current = candidate
-            continue
-        if current:
-            chunks.append(current)
-            current = ""
-        while len(line) > limit:
-            chunks.append(line[:limit])
-            line = line[limit:]
-        current = line
+        if len(candidate) > limit - reserve:
+            if current:
+                chunks.append(f"{current}\n{_FENCE}" if in_fence else current)
+                current = _FENCE if in_fence else ""
+                candidate = f"{current}\n{line}" if current else line
+            while len(candidate) > limit - reserve:
+                chunks.append(candidate[:limit])
+                candidate = candidate[limit:]
+        current = candidate
+        in_fence = line_in_fence
     if current:
         chunks.append(current)
     return chunks
