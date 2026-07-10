@@ -46,12 +46,14 @@ senha e webhook automaticamente.
 Códigos de saída de `--once`: `0` sucesso, `1` varredura falhou, `2` erro
 de configuração.
 
-A primeira varredura estabelece a **baseline**: envia o resumo e o
-relatório completo e grava o snapshot das janelas 🟢 em `state.json`
-(não versionado). Das varreduras seguintes em diante vale a política
-"**só aberturas novas**": o Discord só recebe mensagem quando surge uma
-janela 🟢 que não existia no snapshot anterior — janela que some é
-silêncio. Apague `state.json` para forçar uma nova baseline.
+A primeira varredura estabelece a **baseline**: envia UMA mensagem com as
+janelas livres dos próximos dias (dias e aeronaves sem janela 🟢 ficam de
+fora) e grava o snapshot em `state.json` (não versionado). Das varreduras
+seguintes em diante vale a política "**só aberturas novas**": o Discord só
+recebe mensagem quando surge uma janela 🟢 que não existia no snapshot
+anterior — janela que some é silêncio. Apague `state.json` para forçar uma
+nova baseline (faça isso também após atualizar o monitor, se a regra ou o
+formato das janelas mudou — evita um falso "🔔 Abriu horário!").
 
 ## Regras de disponibilidade (PRD §6)
 
@@ -67,6 +69,9 @@ silêncio. Apague `state.json` para forçar uma nova baseline.
   (padrão 30 min).
 - Vão livre menor que `min_flight_minutes` aparece como 🔴 "vão curto":
   não é reservável.
+- A janela é arredondada na grade de 30 min: começa no nascer do sol
+  arredondado para cima (06:17 → 06:30) e, no sábado, termina no pôr do
+  sol arredondado para baixo (17:23 → 17:00).
 
 ## Calibração de seletores (só login/sessão)
 
@@ -98,7 +103,7 @@ para descobrir o que mudou.
 | `models.py` | dataclasses de domínio, sem dependências |
 | `availability.py` | regras de disponibilidade puras (ADR-0004) |
 | `notifications.py` | política "só aberturas novas" + `state.json` |
-| `report.py` | formatação 🟢/🔴 do relatório e das aberturas |
+| `report.py` | formatação das janelas livres (relatório e aberturas) |
 | `discord.py` | webhook + fragmentação em 2000 chars (ADR-0006) |
 | `browser.py` | Chrome/Selenium, esperas, artefatos de debug |
 | `login.py` | autenticação e detecção de sessão expirada |
