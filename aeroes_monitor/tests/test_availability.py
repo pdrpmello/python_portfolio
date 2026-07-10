@@ -20,17 +20,27 @@ SUNSET = time(17, 30)
 
 
 class OperatingWindowTest(unittest.TestCase):
-    def test_weekday_closes_at_0930(self):
-        window = operating_window(MONDAY, SUNRISE, SUNSET)
-        self.assertEqual((window.start, window.end), (SUNRISE, time(9, 30)))
+    def test_weekday_closes_at_0930_and_start_rounds_up(self):
+        window = operating_window(MONDAY, SUNRISE, SUNSET)  # 05:45 → 06:00
+        self.assertEqual((window.start, window.end), (time(6, 0), time(9, 30)))
 
-    def test_saturday_closes_at_sunset(self):
-        window = operating_window(SATURDAY, SUNRISE, SUNSET)
-        self.assertEqual((window.start, window.end), (SUNRISE, SUNSET))
+    def test_start_already_on_grid_unchanged(self):
+        self.assertEqual(operating_window(MONDAY, time(6, 0), SUNSET).start, time(6, 0))
+
+    def test_start_rounding_examples_from_spec(self):
+        self.assertEqual(operating_window(MONDAY, time(6, 17), SUNSET).start, time(6, 30))
+        self.assertEqual(operating_window(MONDAY, time(5, 47), SUNSET).start, time(6, 0))
+        self.assertEqual(operating_window(MONDAY, time(5, 5), SUNSET).start, time(5, 30))
+
+    def test_saturday_closes_at_sunset_rounded_down(self):
+        window = operating_window(SATURDAY, SUNRISE, time(17, 23))
+        self.assertEqual((window.start, window.end), (time(6, 0), time(17, 0)))
+        self.assertEqual(operating_window(SATURDAY, SUNRISE, time(17, 45)).end, time(17, 30))
+        self.assertEqual(operating_window(SATURDAY, SUNRISE, time(17, 30)).end, time(17, 30))
 
     def test_sunday_closes_at_noon(self):
         window = operating_window(SUNDAY, SUNRISE, SUNSET)
-        self.assertEqual((window.start, window.end), (SUNRISE, time(12, 0)))
+        self.assertEqual((window.start, window.end), (time(6, 0), time(12, 0)))
 
     def test_weekday_sunset_before_0930_wins(self):
         window = operating_window(MONDAY, time(5, 0), time(9, 0))
@@ -38,6 +48,10 @@ class OperatingWindowTest(unittest.TestCase):
 
     def test_no_window_when_sunrise_after_close(self):
         self.assertIsNone(operating_window(MONDAY, time(10, 0), SUNSET))
+
+    def test_no_window_when_rounding_collapses(self):
+        # nascer 09:05 arredonda para 09:30 == fechamento de segunda ⇒ sem janela
+        self.assertIsNone(operating_window(MONDAY, time(9, 5), SUNSET))
 
 
 class TurnaroundBufferTest(unittest.TestCase):
@@ -246,7 +260,7 @@ class EnrichDayScheduleTest(unittest.TestCase):
         enriched = enrich_day_schedule(day, self.RULES)
         self.assertEqual(enriched.day, MONDAY)
         self.assertEqual(
-            (enriched.window.start, enriched.window.end), (SUNRISE, time(9, 30))
+            (enriched.window.start, enriched.window.end), (time(6, 0), time(9, 30))
         )
         self.assertEqual(len(enriched.resources), 2)
         self.assertEqual(enriched.resources[0].resource_name, "PT-ABC")
