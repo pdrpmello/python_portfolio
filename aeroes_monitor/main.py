@@ -21,6 +21,7 @@ from notifications import (
     NotifyState,
     diff_new_windows,
     extract_open_windows,
+    extract_scanned_days,
     load_state,
     save_state,
 )
@@ -73,7 +74,12 @@ def _notify_failure(notifier, previous, message: str) -> None:
 def _save_failure_state(state_path, previous) -> None:
     """Preserva janelas conhecidas; sem state prévio, baseline fica pendente."""
     if previous is not None:
-        save_state(state_path, NotifyState(windows=previous.windows, last_scan_ok=False))
+        save_state(
+            state_path,
+            NotifyState(
+                windows=previous.windows, days=previous.days, last_scan_ok=False
+            ),
+        )
 
 
 def run_scan(config: AppConfig, state_path: Path) -> bool:
@@ -103,10 +109,17 @@ def run_scan(config: AppConfig, state_path: Path) -> bool:
         else:
             if not previous.last_scan_ok:
                 notifier.send_message("✅ Varredura voltou a funcionar.")
-            new_windows = diff_new_windows(previous.windows, windows)
+            new_windows = diff_new_windows(previous, windows)
             if new_windows:
                 notifier.send_message(build_openings_message(new_windows))
-        save_state(state_path, NotifyState(windows=windows, last_scan_ok=True))
+        save_state(
+            state_path,
+            NotifyState(
+                windows=windows,
+                days=extract_scanned_days(availabilities),
+                last_scan_ok=True,
+            ),
+        )
         logger.info(
             "Varredura concluída: %d dia(s), %d erro(s), %d janela(s) 🟢",
             len(result.days),

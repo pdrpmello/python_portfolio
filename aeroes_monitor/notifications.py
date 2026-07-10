@@ -1,8 +1,11 @@
-"""Política de notificação por diff (spec 2026-07-09).
+"""Política de notificação por diff (specs 2026-07-09 e 2026-07-10).
 
-Só aberturas NOVAS notificam; janela que some é silêncio. O snapshot do
-último aviso vive em state.json — ausente/corrompido significa baseline
-(relatório completo uma vez).
+Só aberturas NOVAS notificam; janela que some é silêncio. Guardas
+anti-ruído (spec 2026-07-10): dia fora do snapshot anterior não notifica
+(acabou de entrar no horizonte de varredura) e janela contida numa janela
+livre anterior do mesmo dia+aeronave não é novidade (só encolheu). O
+snapshot do último aviso vive em state.json — ausente/corrompido/versão
+antiga significa baseline (relatório completo uma vez).
 """
 from __future__ import annotations
 
@@ -16,7 +19,7 @@ from models import DayAvailability, PeriodStatus
 
 logger = logging.getLogger(__name__)
 
-STATE_VERSION = 1
+STATE_VERSION = 2
 
 # (dia ISO, recurso, início "HH:MM", fim "HH:MM")
 WindowKey = tuple[str, str, str, str]
@@ -25,6 +28,7 @@ WindowKey = tuple[str, str, str, str]
 @dataclass(frozen=True)
 class NotifyState:
     windows: frozenset[WindowKey]
+    days: frozenset[str]
     last_scan_ok: bool = True
 
 
@@ -45,10 +49,34 @@ def extract_open_windows(days: Sequence[DayAvailability]) -> frozenset[WindowKey
     return frozenset(keys)
 
 
+def extract_scanned_days(days: Sequence[DayAvailability]) -> frozenset[str]:
+    return frozenset(day.day.isoformat() for day in days)
+
+
+def _is_covered(candidate: WindowKey, windows: frozenset[WindowKey]) -> bool:
+    """Contida numa janela anterior do mesmo dia+aeronave? Horários
+    "HH:MM" zero-padded: comparação lexicográfica = numérica.
+    """
+    day, resource, start, end = candidate
+    return any(
+        prev_start <= start and end <= prev_end
+        for prev_day, prev_resource, prev_start, prev_end in windows
+        if prev_day == day and prev_resource == resource
+    )
+
+
 def diff_new_windows(
-    previous: frozenset[WindowKey], current: frozenset[WindowKey]
+    previous: NotifyState, current: frozenset[WindowKey]
 ) -> tuple[WindowKey, ...]:
-    return tuple(sorted(current - previous))
+    """Chave nova notifica SE o dia já era varrido e nenhuma janela
+    anterior a contém (dia novo no horizonte e janela que encolheu são
+    silêncio — spec 2026-07-10).
+    """
+    return tuple(
+        key
+        for key in sorted(current - previous.windows)
+        if key[0] in previous.days and not _is_covered(key, previous.windows)
+    )
 
 
 def load_state(path: Path) -> NotifyState | None:
@@ -65,7 +93,16 @@ def load_state(path: Path) -> NotifyState | None:
             len(w) == 4 and all(isinstance(part, str) for part in w) for w in windows
         ):
             raise ValueError("janela malformada")
-        return NotifyState(windows=windows, last_scan_ok=bool(data["last_scan_ok"]))
+        raw_days = data["days"]
+        if not isinstance(raw_days, list) or not all(
+            isinstance(d, str) for d in raw_days
+        ):
+            raise ValueError("dias malformados")
+        return NotifyState(
+            windows=windows,
+            days=frozenset(raw_days),
+            last_scan_ok=bool(data["last_scan_ok"]),
+        )
     except FileNotFoundError:
         return None
     except (OSError, ValueError, KeyError, TypeError):
@@ -77,6 +114,7 @@ def save_state(path: Path, state: NotifyState) -> None:
     payload = {
         "version": STATE_VERSION,
         "windows": sorted(state.windows),
+        "days": sorted(state.days),
         "last_scan_ok": state.last_scan_ok,
     }
     Path(path).write_text(
