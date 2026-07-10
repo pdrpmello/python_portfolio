@@ -10,7 +10,7 @@ from models import (
     ScanError,
     TimePeriod,
 )
-from report import build_report, build_summary
+from report import build_openings_message, build_report, build_summary
 
 MONDAY = date(2026, 7, 13)
 
@@ -111,6 +111,19 @@ class BuildSummaryTest(unittest.TestCase):
         error = ScanError(day_index=0, day_label="13/07/2026", message="x")
         text = build_summary([_sample_day()], [error])
         self.assertIn("1 com erro", text)
+
+
+class BuildOpeningsMessageTest(unittest.TestCase):
+    def test_formats_each_window_with_weekday(self):
+        text = build_openings_message(
+            [
+                ("2026-07-11", "PP-AYB", "06:17", "09:30"),
+                ("2026-07-12", "Stand By", "07:00", "12:00"),
+            ]
+        )
+        self.assertIn("🔔 **Abriu horário!**", text)
+        self.assertIn("🟢 Sáb 11/07/2026: PP-AYB 06:17–09:30", text)
+        self.assertIn("🟢 Dom 12/07/2026: Stand By 07:00–12:00", text)
 
 
 if __name__ == "__main__":
