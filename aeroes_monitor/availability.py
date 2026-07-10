@@ -1,8 +1,9 @@
 """Regras de disponibilidade. Puro: importa apenas models (ADR-0004).
 
 Janelas por dia da semana (PRD §6): seg–sex nascer→09:30; sáb nascer→pôr;
-dom nascer→12:00. Buffer de turnaround expande voos ocupados antes do
-cálculo dos vãos livres; vão livre < duração mínima não é reservável.
+dom nascer→12:00 — pontas arredondadas na grade de 30 min (início ↑,
+fim ↓; spec 2026-07-10). Buffer de turnaround expande voos ocupados antes
+do cálculo dos vãos livres; vão livre < duração mínima não é reservável.
 """
 from __future__ import annotations
 
@@ -50,12 +51,32 @@ def _to_time(minutes: int) -> time:
     return time(minutes // 60, minutes % 60)
 
 
+_GRID_MINUTES = 30
+
+
+def _ceil_to_grid(value: time) -> time:
+    minutes = _to_minutes(value)
+    remainder = minutes % _GRID_MINUTES
+    if remainder:
+        minutes += _GRID_MINUTES - remainder
+    return _to_time(minutes)
+
+
+def _floor_to_grid(value: time) -> time:
+    minutes = _to_minutes(value)
+    return _to_time(minutes - minutes % _GRID_MINUTES)
+
+
 def operating_window(day: date, sunrise: time, sunset: time) -> TimePeriod | None:
+    """Pontas na grade :00/:30 (spec 2026-07-10): início = nascer ↑;
+    fim = limite ↓ (só muda algo no sábado — 09:30/12:00 já estão na grade).
+    """
     limit = WEEKDAY_CLOSE_LIMITS[day.weekday()]
-    end = sunset if limit is None else min(limit, sunset)
-    if sunrise >= end:
+    end = _floor_to_grid(sunset if limit is None else min(limit, sunset))
+    start = _ceil_to_grid(sunrise)
+    if start >= end:
         return None
-    return TimePeriod(start=sunrise, end=end)
+    return TimePeriod(start=start, end=end)
 
 
 def apply_turnaround_buffer(
