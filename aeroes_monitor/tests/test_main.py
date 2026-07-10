@@ -82,7 +82,6 @@ class RunScanTest(unittest.TestCase):
         notifier = notifier_cls.return_value
         scanner_cls.return_value.scan.return_value = _scan_result()
         self.assertTrue(run_scan(_config(), self.state_path))
-        notifier.send_summary.assert_called_once()
         notifier.send_report.assert_called_once()
         notifier.send_message.assert_not_called()
         state = load_state(self.state_path)
@@ -97,7 +96,6 @@ class RunScanTest(unittest.TestCase):
         run_scan(_config(), self.state_path)  # baseline
         notifier.reset_mock()
         self.assertTrue(run_scan(_config(), self.state_path))
-        notifier.send_summary.assert_not_called()
         notifier.send_report.assert_not_called()
         notifier.send_message.assert_not_called()
         notifier.send_error.assert_not_called()
@@ -117,7 +115,6 @@ class RunScanTest(unittest.TestCase):
         self.assertTrue(run_scan(_config(), self.state_path))
         notifier.send_message.assert_called_once()
         self.assertIn("Abriu horário", notifier.send_message.call_args.args[0])
-        notifier.send_summary.assert_not_called()
         notifier.send_report.assert_not_called()
 
     def test_error_notifies_only_on_transition(
