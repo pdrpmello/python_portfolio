@@ -87,6 +87,7 @@ class RunScanTest(unittest.TestCase):
         state = load_state(self.state_path)
         self.assertTrue(state.last_scan_ok)
         self.assertEqual(len(state.windows), 1)
+        self.assertEqual(state.days, frozenset({"2026-07-11"}))
 
     def test_no_changes_is_silent(
         self, notifier_cls, create_driver, do_login, scanner_cls
@@ -143,6 +144,7 @@ class RunScanTest(unittest.TestCase):
             self.state_path,
             NotifyState(
                 windows=frozenset({("2026-07-11", "PT-ABC", "06:00", "17:00")}),
+                days=frozenset({"2026-07-11"}),
                 last_scan_ok=False,
             ),
         )
