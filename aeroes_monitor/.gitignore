@@ -4,6 +4,7 @@ config.ini
 # Artefatos de execução
 debug/
 *.log
+state.json
 
 # Python
 __pycache__/
