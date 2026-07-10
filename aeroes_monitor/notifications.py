@@ -54,11 +54,16 @@ def diff_new_windows(
 def load_state(path: Path) -> NotifyState | None:
     try:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            logger.warning("state.json não é um objeto JSON; tratando como baseline")
+            return None
         if data.get("version") != STATE_VERSION:
             logger.warning("state.json com versão desconhecida; tratando como baseline")
             return None
         windows = frozenset(tuple(w) for w in data["windows"])
-        if not all(len(w) == 4 for w in windows):
+        if not all(
+            len(w) == 4 and all(isinstance(part, str) for part in w) for w in windows
+        ):
             raise ValueError("janela malformada")
         return NotifyState(windows=windows, last_scan_ok=bool(data["last_scan_ok"]))
     except FileNotFoundError:
