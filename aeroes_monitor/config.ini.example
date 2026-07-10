@@ -40,8 +40,9 @@ debug_dir = debug
 [aircraft]
 ; Aeronaves monitoradas: MATRICULA = modelo (uma por linha) — ADR-0007.
 ; Somente estas aparecem no relatório, independente do status no SAGA.
-PT-ABC = Cessna 152
-PT-XYZ = Cessna 172
+; O modelo é texto livre exibido no relatório — prefira abreviado (C152).
+PT-ABC = C152
+PT-XYZ = C172
 
 [logging]
 ; DEBUG | INFO | WARNING | ERROR
