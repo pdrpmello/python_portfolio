@@ -24,7 +24,7 @@ from notifications import (
     load_state,
     save_state,
 )
-from report import build_openings_message, build_report, build_summary
+from report import build_openings_message, build_report
 from scheduler import ScheduleScanner
 
 logger = logging.getLogger("aeroes_monitor")
@@ -99,7 +99,6 @@ def run_scan(config: AppConfig, state_path: Path) -> bool:
         availabilities = [enrich_day_schedule(day, rules) for day in result.days]
         windows = extract_open_windows(availabilities)
         if previous is None:
-            notifier.send_summary(build_summary(availabilities, result.errors))
             notifier.send_report(build_report(availabilities, result.errors))
         else:
             if not previous.last_scan_ok:
