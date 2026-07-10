@@ -37,6 +37,23 @@ class SplitMessageTest(unittest.TestCase):
     def test_empty_text(self):
         self.assertEqual(split_message(""), [])
 
+    def test_fenced_block_reopens_across_chunks(self):
+        rows = "\n".join(f"linha-{i:02d}" for i in range(6))
+        text = f"cabeçalho\n```\n{rows}\n```"
+        chunks = split_message(text, limit=30)
+        self.assertGreaterEqual(len(chunks), 2)
+        for chunk in chunks:
+            self.assertEqual(chunk.count("```") % 2, 0, chunk)
+            self.assertLessEqual(len(chunk), 30)
+        self.assertTrue(chunks[1].startswith("```\n"))
+        joined = "\n".join(chunks)
+        for i in range(6):
+            self.assertIn(f"linha-{i:02d}", joined)  # nenhuma linha perdida
+
+    def test_fenced_block_that_fits_is_untouched(self):
+        text = "📅 dia\n```\nlinha\n```"
+        self.assertEqual(split_message(text, limit=100), [text])
+
 
 class DiscordNotifierTest(unittest.TestCase):
     def _response(self, status=204):
