@@ -94,9 +94,31 @@ class StatePersistenceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.json"
             path.write_text("{isso não é json", encoding="utf-8")
-            self.assertIsNone(load_state(path))
+            with self.assertLogs("notifications", level="WARNING"):
+                self.assertIsNone(load_state(path))
             path.write_text('{"version": 99, "windows": []}', encoding="utf-8")
-            self.assertIsNone(load_state(path))
+            with self.assertLogs("notifications", level="WARNING"):
+                self.assertIsNone(load_state(path))
+
+    def test_wrong_shape_json_returns_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            for payload in ("null", "[]", "42", "true", '"texto"'):
+                path.write_text(payload, encoding="utf-8")
+                with self.assertLogs("notifications", level="WARNING"):
+                    self.assertIsNone(load_state(path))
+            path.write_text(
+                '{"version": 1, "windows": [["2026-07-11", "PP-AYB", "06:00"]], "last_scan_ok": true}',
+                encoding="utf-8",
+            )
+            with self.assertLogs("notifications", level="WARNING"):
+                self.assertIsNone(load_state(path))
+            path.write_text(
+                '{"version": 1, "windows": [[1, 2, 3, 4]], "last_scan_ok": true}',
+                encoding="utf-8",
+            )
+            with self.assertLogs("notifications", level="WARNING"):
+                self.assertIsNone(load_state(path))
 
 
 if __name__ == "__main__":
