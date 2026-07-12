@@ -1,0 +1,79 @@
+; Aeroclube Schedule Monitor — copie para config.ini e preencha.
+; ATENÇÃO: config.ini contém segredos e está no .gitignore — NUNCA versionar.
+; Comentários usam ';' (o caractere '#' é reservado para seletores CSS de id).
+
+[credentials]
+; Credenciais de acesso ao SAGA (Aeroclube do Espírito Santo)
+username = seu-email@example.com
+password = sua-senha
+
+[discord]
+; Webhook do canal que recebe os relatórios
+; (Configurações do canal → Integrações → Webhooks → Novo webhook)
+webhook_url = https://discord.com/api/webhooks/SEU/WEBHOOK
+
+[monitor]
+; Quantos dias varrer a partir do dia exibido
+max_days = 30
+; Intervalo entre varreduras no modo contínuo (segundos, mínimo 60)
+check_interval_seconds = 900
+; Intervalo mínimo entre voos consecutivos da mesma aeronave (minutos)
+turnaround_minutes = 30
+; Um vão livre só é 🟢 se durar pelo menos isto (minutos)
+min_flight_minutes = 60
+; Duração máxima de voo (informativo/validação; não fatia janelas)
+max_flight_minutes = 120
+
+[selenium]
+; URL de login do SAGA
+base_url = https://saga.example.com/login
+; URL da página da escala (menu Escala → Meus Voos). É dela que o monitor
+; lê a variável allSchedules (ADR-0010).
+schedule_url = https://aeroes.saga.aero/schedules/personal
+; true = Chrome invisível; use false para calibrar seletores olhando a página
+headless = true
+page_load_timeout_seconds = 30
+element_timeout_seconds = 15
+; Pasta onde screenshots/HTML são salvos em falhas
+debug_dir = debug
+
+[aircraft]
+; Aeronaves monitoradas: MATRICULA = modelo (uma por linha) — ADR-0007.
+; Somente estas aparecem no relatório, independente do status no SAGA.
+; O modelo é texto livre exibido no relatório — prefira abreviado (C152).
+PT-ABC = C152
+PT-XYZ = C172
+
+[logging]
+; DEBUG | INFO | WARNING | ERROR
+level = INFO
+; Arquivo de log (vazio = somente console)
+file =
+
+; [selectors] — OPCIONAL: descomente e ajuste após calibrar com a página real
+; (ADR-0003; veja "Calibração de seletores" no README).
+; Cada chave aceita VÁRIOS seletores CSS, um por linha (linhas continuadas
+; indentadas). Vírgula NÃO separa: vírgula é sintaxe válida de CSS.
+;[selectors]
+;login_username =
+;    input[name="email"]
+;    input[type="email"]
+;    input[name="username"]
+;    #email
+;login_password =
+;    input[name="password"]
+;    input[type="password"]
+;    #password
+;login_submit =
+;    button[type="submit"]
+;    input[type="submit"]
+;    .btn-login
+;login_form =
+;    form.login
+;    form#login
+;    input[type="password"]
+;logged_in_marker =
+;    #navbarDropdownProfile
+;    #menuSearch
+;    a.nav-link[href="/dashboard"]
+;    .user-menu
