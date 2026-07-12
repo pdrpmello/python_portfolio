@@ -64,22 +64,36 @@ def _quit_quietly(driver) -> None:
 
 
 def _notify_failure(notifier, previous, message: str) -> None:
-    """Erro só na transição ok→falha (spec: sem spam de falha repetida)."""
+    """Erro só na transição ok→falha (spec: sem spam de falha repetida).
+
+    Melhor-esforço: roda dentro do handler de exceção de run_scan, então
+    Discord fora do ar não pode virar exceção propagada.
+    """
     if previous is None or previous.last_scan_ok:
-        notifier.send_error(message)
+        try:
+            notifier.send_error(message)
+        except Exception:
+            logger.warning("Falha ao notificar erro no Discord", exc_info=True)
     else:
         logger.info("Falha repetida; Discord não notificado")
 
 
 def _save_failure_state(state_path, previous) -> None:
-    """Preserva janelas conhecidas; sem state prévio, baseline fica pendente."""
+    """Preserva janelas conhecidas; sem state prévio, baseline fica pendente.
+
+    Melhor-esforço: roda dentro do handler de exceção de run_scan, então
+    state.json travado (ex.: lock do OneDrive) não pode matar o loop.
+    """
     if previous is not None:
-        save_state(
-            state_path,
-            NotifyState(
-                windows=previous.windows, days=previous.days, last_scan_ok=False
-            ),
-        )
+        try:
+            save_state(
+                state_path,
+                NotifyState(
+                    windows=previous.windows, days=previous.days, last_scan_ok=False
+                ),
+            )
+        except OSError:
+            logger.warning("Falha ao gravar state.json; estado antigo mantido", exc_info=True)
 
 
 def run_scan(config: AppConfig, state_path: Path) -> bool:
@@ -159,7 +173,10 @@ def main(argv=None) -> int:
     )
     try:
         while True:
-            run_scan(config, state_path)
+            try:
+                run_scan(config, state_path)
+            except Exception:
+                logger.exception("run_scan propagou exceção (bug); loop continua")
             logger.info(
                 "Próxima varredura em %d s", config.monitor.check_interval_seconds
             )
