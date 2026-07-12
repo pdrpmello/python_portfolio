@@ -191,10 +191,46 @@ class RunScanTest(unittest.TestCase):
         scanner_cls.return_value.scan.return_value = _scan_result()
         self.assertTrue(run_scan(_config(), self.state_path))
 
+    def test_state_write_failure_does_not_propagate(
+        self, notifier_cls, create_driver, do_login, scanner_cls
+    ):
+        """Contrato de run_scan: OSError persistente no save_state não estoura."""
+        scanner_cls.return_value.scan.return_value = _scan_result()
+        run_scan(_config(), self.state_path)  # baseline com estado gravado
+        with mock.patch(
+            "main.save_state", side_effect=OSError("state.json travado pelo OneDrive")
+        ):
+            self.assertFalse(run_scan(_config(), self.state_path))
+
+    def test_discord_outage_does_not_propagate(
+        self, notifier_cls, create_driver, do_login, scanner_cls
+    ):
+        """Discord fora do ar: send_* falhando (inclusive no handler) não estoura."""
+        notifier = notifier_cls.return_value
+        notifier.send_report.side_effect = ConnectionError("discord fora do ar")
+        notifier.send_error.side_effect = ConnectionError("discord fora do ar")
+        scanner_cls.return_value.scan.return_value = _scan_result()
+        with mock.patch("main.save_debug_artifacts"):
+            self.assertFalse(run_scan(_config(), self.state_path))
+        self.assertIsNone(load_state(self.state_path))  # baseline continua pendente
+
 
 class MainExitCodesTest(unittest.TestCase):
     def test_missing_config_returns_2(self):
         self.assertEqual(main(["--once", "--config", "nao_existe_123.ini"]), 2)
+
+
+class MainLoopTest(unittest.TestCase):
+    def test_loop_survives_run_scan_exception(self):
+        """Regressão de bug futuro em run_scan não pode matar o modo contínuo."""
+        with mock.patch("main.load_config", return_value=_config()), mock.patch(
+            "main.config_to_safe_dict", return_value={}
+        ), mock.patch(
+            "main.run_scan", side_effect=RuntimeError("bug inesperado")
+        ) as scan, mock.patch("main.time.sleep", side_effect=KeyboardInterrupt) as slp:
+            self.assertEqual(main([]), 0)
+        scan.assert_called_once()
+        slp.assert_called_once()
 
 
 if __name__ == "__main__":
