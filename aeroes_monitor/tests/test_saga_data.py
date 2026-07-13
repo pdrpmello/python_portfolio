@@ -1,8 +1,18 @@
 """Testes das funções puras de dados do SAGA (sol e agendamentos)."""
 import unittest
-from datetime import date, time
+from datetime import date, datetime, time
+from unittest import mock
 
-from saga_data import parse_sun_xml, utc_time_to_local, PAGE_WINDOW_DAYS, STANDBY_NAME, build_day_schedules
+from saga_data import (
+    LOCAL_TZ,
+    PAGE_WINDOW_DAYS,
+    STANDBY_NAME,
+    UTC,
+    build_day_schedules,
+    local_today,
+    parse_sun_xml,
+    utc_time_to_local,
+)
 from models import ScanResult
 
 SUN_XML = (
@@ -31,6 +41,17 @@ class UtcTimeToLocalTest(unittest.TestCase):
         # SBVT em julho: UTC-3 (Brasil sem horário de verão desde 2019).
         self.assertEqual(utc_time_to_local(time(9, 17), date(2026, 7, 9)), time(6, 17))
         self.assertEqual(utc_time_to_local(time(20, 15), date(2026, 7, 9)), time(17, 15))
+
+
+class LocalTodayTest(unittest.TestCase):
+    def test_converts_now_to_aeroclub_timezone(self):
+        # 01:30 UTC de 13/07 ainda é 22:30 de 12/07 em São Paulo (UTC-3):
+        # no Lambda (relógio UTC), date.today() retornaria 13/07 — errado.
+        fake_now = datetime(2026, 7, 13, 1, 30, tzinfo=UTC)
+        with mock.patch("saga_data.datetime") as dt:
+            dt.now.side_effect = lambda tz: fake_now.astimezone(tz)
+            self.assertEqual(local_today(), date(2026, 7, 12))
+            dt.now.assert_called_once_with(LOCAL_TZ)
 
 
 def _raw(reg, start, end, status="CONFIRMED", student=None, icao="C152"):
