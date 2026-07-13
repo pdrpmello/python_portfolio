@@ -194,7 +194,7 @@ class SafeDictTest(unittest.TestCase):
 class LambdaIniTest(unittest.TestCase):
     """config.lambda.ini é COMMITADO: nunca pode conter segredos."""
 
-    PATH = Path(__file__).resolve().parent.parent / "config.lambda.ini"
+    PATH = Path(__file__).resolve().parent.parent / "src" / "config.lambda.ini"
 
     def test_has_no_secret_sections(self):
         text = self.PATH.read_text(encoding="utf-8")

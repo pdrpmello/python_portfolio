@@ -23,7 +23,7 @@ A ação de reservar continua 100% manual, no próprio SAGA.
 
 ```
 python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m pip install -r src\requirements.txt
 ```
 
 ## Configuração
