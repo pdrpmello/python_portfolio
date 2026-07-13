@@ -27,6 +27,15 @@ PT-ABC = Cessna 152
 PT-XYZ = Cessna 172
 """
 
+CHROME_INI = VALID_INI.replace(
+    "base_url = https://saga.example.com/login",
+    """base_url = https://saga.example.com/login
+chrome_binary = /opt/chrome-linux64/chrome
+chrome_extra_args =
+    --no-sandbox
+    --disable-dev-shm-usage""",
+)
+
 
 def _write_ini(directory: str, content: str) -> Path:
     path = Path(directory) / "config.ini"
@@ -73,6 +82,53 @@ login_username =
         # Chaves não sobrescritas mantêm o default.
         self.assertEqual(
             config.selectors["login_password"], DEFAULT_SELECTORS["login_password"]
+        )
+
+    def test_overrides_fill_missing_sections_and_win_over_file(self):
+        ini = """
+[selenium]
+base_url = https://saga.example.com/login
+
+[aircraft]
+PT-ABC = C152
+
+[monitor]
+max_days = 10
+"""
+        overrides = {
+            ("credentials", "username"): "piloto@example.com",
+            ("credentials", "password"): "s3cr3t",
+            ("discord", "webhook_url"): "https://discord.com/api/webhooks/1/a",
+            ("monitor", "max_days"): "5",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_config(_write_ini(tmp, ini), overrides=overrides)
+        # Seções ausentes no .ini são criadas pelo override…
+        self.assertEqual(config.credentials.username, "piloto@example.com")
+        self.assertEqual(
+            config.discord.webhook_url, "https://discord.com/api/webhooks/1/a"
+        )
+        # …e override vence valor existente no arquivo.
+        self.assertEqual(config.monitor.max_days, 5)
+
+    def test_no_overrides_keeps_current_behavior(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_config(_write_ini(tmp, VALID_INI), overrides=None)
+        self.assertEqual(config.credentials.username, "piloto@example.com")
+
+    def test_chrome_fields_default_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_config(_write_ini(tmp, VALID_INI))
+        self.assertEqual(config.selenium.chrome_binary, "")
+        self.assertEqual(config.selenium.chrome_extra_args, ())
+
+    def test_chrome_extra_args_one_per_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_config(_write_ini(tmp, CHROME_INI))
+        self.assertEqual(config.selenium.chrome_binary, "/opt/chrome-linux64/chrome")
+        self.assertEqual(
+            config.selenium.chrome_extra_args,
+            ("--no-sandbox", "--disable-dev-shm-usage"),
         )
 
     def test_missing_required_lists_all_errors(self):

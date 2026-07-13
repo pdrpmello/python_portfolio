@@ -4,6 +4,9 @@ Seletores CSS ficam em [selectors] com defaults embutidos (ADR-0003):
 um seletor por linha (vírgula é sintaxe CSS válida, não separador).
 Hoje cobrem só login/sessão — a leitura da agenda usa a variável
 allSchedules exposta pela página, não mais scraping de DOM (ADR-0010).
+
+No Lambda, segredos entram como `overrides` de load_config (SSM → memória),
+nunca por arquivo (spec 2026-07-12).
 """
 from __future__ import annotations
 
@@ -66,6 +69,10 @@ class SeleniumConfig:
     page_load_timeout_seconds: int = 30
     element_timeout_seconds: int = 15
     debug_dir: str = "debug"
+    # Deploy em container (Lambda): binário do Chrome baked na imagem e
+    # flags extras (--no-sandbox etc.). Vazios ⇒ comportamento local atual.
+    chrome_binary: str = ""
+    chrome_extra_args: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -151,7 +158,9 @@ def _load_aircraft(
     return aircraft
 
 
-def load_config(path: str | Path) -> AppConfig:
+def load_config(
+    path: str | Path, overrides: dict[tuple[str, str], str] | None = None
+) -> AppConfig:
     path = Path(path)
     if not path.exists():
         raise ConfigError(
@@ -163,6 +172,13 @@ def load_config(path: str | Path) -> AppConfig:
     parser = configparser.ConfigParser(interpolation=None, comment_prefixes=(";",))
     parser.optionxform = str  # preserva maiúsculas nas matrículas de [aircraft]
     parser.read(path, encoding="utf-8")
+
+    # Overrides {(seção, chave): valor} aplicados antes da validação — é por
+    # aqui que o handler Lambda injeta segredos do SSM sem tocar disco.
+    for (section, key), value in (overrides or {}).items():
+        if not parser.has_section(section):
+            parser.add_section(section)
+        parser.set(section, key, value)
 
     errors: list[str] = []
     credentials = CredentialsConfig(
@@ -199,6 +215,14 @@ def load_config(path: str | Path) -> AppConfig:
         ),
         debug_dir=parser.get("selenium", "debug_dir", fallback="debug").strip()
         or "debug",
+        chrome_binary=parser.get("selenium", "chrome_binary", fallback="").strip(),
+        chrome_extra_args=tuple(
+            line.strip()
+            for line in parser.get(
+                "selenium", "chrome_extra_args", fallback=""
+            ).splitlines()
+            if line.strip()
+        ),
     )
     logging_config = LoggingConfig(
         level=parser.get("logging", "level", fallback="INFO").strip() or "INFO",
