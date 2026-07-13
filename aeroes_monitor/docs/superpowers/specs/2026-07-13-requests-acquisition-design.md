@@ -38,6 +38,7 @@ zip (sem ECR) e o estado vai para o DynamoDB (always-free).
 | Debug em falha | **HTML salvo em `debug_dir`** (PC e `/tmp` no Lambda) **+ logado no CloudWatch** (evento < 256 KB; ingestão no free tier) | Upload para S3 `debug/` (exigia bucket) |
 | User-Agent | UA de Chrome pinado (o validado no probe) | UA custom "aeroes-monitor" (não testado; risco novo sem ganho) |
 | Sessão | Nova sessão + login por varredura (igual ao browser hoje: 54 logins/dia) | Cache de cookie entre varreduras (YAGNI; 2 requests extras custam nada) |
+| Layout | **código de runtime move para `src/`** e `CodeUri: src/` — com `CodeUri: .` o `sam build` ziparia a pasta inteira, INCLUINDO `config.ini` (segredos!) e `.venv`. `config.ini`/`state.json`/`debug/` ficam na raiz, fisicamente fora do pacote | `CodeUri: .` (vaza segredo no zip); Makefile builder custom (exige make no Windows) |
 
 ## Arquitetura
 
@@ -113,7 +114,12 @@ em `main.run_scan` (grava em `debug_dir` e loga no CloudWatch quando
   `PutItem` com o conteúdo. Env vars: `STATE_TABLE` substitui
   `STATE_BUCKET`/`STATE_KEY`/`DEBUG_PREFIX`. Upload de debug para S3 morre
   (o HTML já está no CloudWatch via log).
-- `template.yaml` — função zip (`CodeUri: .`, `Handler: handler.lambda_handler`,
+- **layout**: os 11 módulos de runtime + `config.lambda.ini` movem para
+  `src/` (git mv; imports internos ficam iguais — pacote flat).
+  `tests/__init__.py` insere `src/` no `sys.path` (uma linha); modo local
+  vira `python src/main.py`; `config.ini`/`state.json`/`debug/` seguem na
+  raiz (fora do pacote).
+- `template.yaml` — função zip (`CodeUri: src/`, `Handler: handler.lambda_handler`,
   `Runtime: python3.13`, 256 MB, 120 s); recurso `StateTable`
   (`AWS::DynamoDB::Table`, provisioned 1/1, PK `id` string); IAM:
   `dynamodb:GetItem`/`PutItem` na tabela + os 3 `ssm:GetParameter`; bucket S3
