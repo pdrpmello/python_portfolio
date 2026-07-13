@@ -72,9 +72,10 @@ class FakeDriver:
         pass
 
 
-def _scan(driver, config=None):
+def _scan(driver, config=None, today=date(2026, 7, 9)):
     scanner = ScheduleScanner(driver, config or _config())
-    with mock.patch("scheduler.is_login_page", return_value=False):
+    with mock.patch("scheduler.is_login_page", return_value=False), \
+         mock.patch("scheduler.local_today", return_value=today):
         return scanner.scan()
 
 
@@ -84,7 +85,7 @@ class ScanTest(unittest.TestCase):
         result = _scan(driver)
         self.assertIsInstance(result, ScanResult)
         self.assertEqual(len(result.days), 2)
-        self.assertEqual(result.days[0].day, date.today())
+        self.assertEqual(result.days[0].day, date(2026, 7, 9))
         ayb = next(r for r in result.days[0].resources if r.name == "PP-AYB")
         # 07:00 local vindo de start_at_raw; sol 09:17Z -> 06:17 local.
         self.assertEqual(result.days[0].sunrise.strftime("%H:%M"), "06:17")

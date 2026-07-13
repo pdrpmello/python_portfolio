@@ -8,14 +8,13 @@ Read-only: apenas GET e leitura de variável (ADR-0001).
 from __future__ import annotations
 
 import logging
-from datetime import date
 
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 
 from login import is_login_page, login
 from models import ScanError, ScanResult
-from saga_data import build_day_schedules, parse_sun_xml, utc_time_to_local
+from saga_data import build_day_schedules, local_today, parse_sun_xml, utc_time_to_local
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +57,7 @@ class ScheduleScanner:
             self.config.aircraft,
             sunrise,
             sunset,
-            date.today(),
+            local_today(),
             self.config.monitor.max_days,
         )
 
@@ -112,7 +111,7 @@ class ScheduleScanner:
             if parsed is None:
                 logger.warning("XML do sol não parseável")
                 return None
-            today = date.today()
+            today = local_today()
             return (
                 utc_time_to_local(parsed[0], today),
                 utc_time_to_local(parsed[1], today),
