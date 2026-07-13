@@ -191,5 +191,35 @@ class SafeDictTest(unittest.TestCase):
         self.assertNotIn("webhooks/123", str(safe))
 
 
+class LambdaIniTest(unittest.TestCase):
+    """config.lambda.ini é COMMITADO: nunca pode conter segredos."""
+
+    PATH = Path(__file__).resolve().parent.parent / "config.lambda.ini"
+
+    def test_has_no_secret_sections(self):
+        text = self.PATH.read_text(encoding="utf-8")
+        self.assertNotIn("[credentials]", text)
+        self.assertNotIn("[discord]", text)
+
+    def test_validates_with_runtime_overrides(self):
+        config = load_config(
+            self.PATH,
+            overrides={
+                ("credentials", "username"): "piloto@example.com",
+                ("credentials", "password"): "s3cr3t",
+                ("discord", "webhook_url"): "https://discord.com/api/webhooks/1/a",
+            },
+        )
+        self.assertEqual(
+            config.selenium.chrome_binary, "/opt/chrome-linux64/chrome"
+        )
+        self.assertIn("--no-sandbox", config.selenium.chrome_extra_args)
+        self.assertEqual(config.selenium.debug_dir, "/tmp/debug")
+        self.assertIn("PP-AYB", config.aircraft)
+        self.assertEqual(
+            config.selectors["logged_in_marker"][0], "#navbarDropdownProfile"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
