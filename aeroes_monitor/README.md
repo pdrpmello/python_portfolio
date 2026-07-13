@@ -151,3 +151,67 @@ testada com fakes; nenhum teste abre Chrome nem toca o SAGA real.
   desvio ≤ ~7 min no fim da janela de 30 dias (ADR-0008).
 - Uma mudança no SAGA exige recalibração dos seletores de login ou pode
   quebrar o contrato `allSchedules` (ADR-0010).
+
+## Deploy na AWS (Lambda)
+
+O monitor roda sem PC ligado: EventBridge Scheduler dispara um Lambda de
+container a cada 20 min (06:00–23:40, horário de Brasília), o estado vive
+em `s3://aeroes-monitor-state-<account-id>/state.json` (versionado) e os
+segredos em SSM Parameter Store (SecureString). Infra inteira em
+`template.yaml` (SAM). Design completo:
+`docs/superpowers/specs/2026-07-12-aws-lambda-deploy-design.md`.
+
+O fluxo local (`python main.py` com `config.ini`) segue funcionando — mas
+não rode os dois ao mesmo tempo: PC + AWS no mesmo webhook duplicam toda
+notificação.
+
+### Arquivos
+
+- `handler.py` — entrypoint do Lambda (S3 + SSM ao redor de `run_scan`).
+- `config.lambda.ini` — config **não-secreta** da nuvem (commitada; sem
+  seções de credenciais/Discord — o handler injeta segredos do SSM via
+  `load_config(..., overrides=...)`).
+- `Dockerfile` — Python 3.13 + Chrome for Testing **pinado** (`ARG
+  CHROME_VERSION`); `TZ=America/Sao_Paulo` vai na imagem porque a env var
+  `TZ` é reservada pelo Lambda.
+- `template.yaml` — função (2048 MB / 300 s / concorrência 1), bucket
+  versionado com `debug/` expirando em 30 dias, agendamento
+  `cron(0/20 6-23 * * ? *)` no fuso `America/Sao_Paulo`, alarme
+  `Errors >= 1` (3×20 min) → SNS → e-mail.
+
+### Pré-requisitos (uma vez)
+
+1. Instalar: `winget install -e --id Amazon.AWSCLI`,
+   `winget install -e --id Amazon.SAM-CLI`,
+   `winget install -e --id Docker.DockerDesktop` (exige WSL2).
+2. Console AWS: usuário IAM de deploy dedicado com MFA + access key
+   (**jamais** access key do root) → `aws configure` (região `sa-east-1`).
+3. Criar os 3 segredos (senha via prompt, fora do histórico do shell):
+
+   ```powershell
+   aws ssm put-parameter --name /aeroes-monitor/saga-username --type SecureString --value (Read-Host "usuário SAGA")
+   $sec = Read-Host "senha SAGA" -AsSecureString
+   aws ssm put-parameter --name /aeroes-monitor/saga-password --type SecureString --value ([Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)))
+   aws ssm put-parameter --name /aeroes-monitor/discord-webhook-url --type SecureString --value (Read-Host "webhook Discord")
+   ```
+
+### Build, teste local e deploy
+
+```powershell
+sam build
+
+# Smoke test local (Docker): bucket descartável só para o teste —
+# ATENÇÃO: publica um relatório baseline no canal Discord real.
+$acct = aws sts get-caller-identity --query Account --output text
+aws s3 mb "s3://aeroes-monitor-localtest-$acct"
+Set-Content locals.json "{`"MonitorFunction`": {`"STATE_BUCKET`": `"aeroes-monitor-localtest-$acct`"}}"
+sam local invoke MonitorFunction --no-event --env-vars locals.json
+aws s3 rb "s3://aeroes-monitor-localtest-$acct" --force
+
+sam deploy --guided   # 1ª vez (gera samconfig.toml); depois só: sam deploy
+```
+
+Após o primeiro deploy: confirmar a assinatura SNS no e-mail, invocar
+manualmente (`aws lambda invoke --function-name aeroes-monitor out.json`),
+conferir o baseline no Discord e **desligar o modo contínuo no PC**.
+Logs: `sam logs --stack-name aeroes-monitor --tail`.
