@@ -10,3 +10,7 @@ state.json
 __pycache__/
 *.pyc
 .venv/
+
+# Build do SAM e overrides locais de env
+.aws-sam/
+locals.json

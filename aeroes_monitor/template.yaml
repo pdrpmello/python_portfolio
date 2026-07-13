@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  aeroes_monitor - varredura read-only da escala SAGA a cada 20 min
+  (06:00-23:40 BRT), estado no S3, segredos no SSM, aviso no Discord.
+  Spec: docs/superpowers/specs/2026-07-12-aws-lambda-deploy-design.md
+
+Parameters:
+  AlertEmail:
+    Type: String
+    Default: pedroh723@gmail.com
+    Description: E-mail que recebe o alarme de Errors (assinatura SNS).
+
+Resources:
+  MonitorFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: .
+      DockerTag: aeroes-monitor
+    Properties:
+      FunctionName: aeroes-monitor
+      PackageType: Image
+      Architectures: [x86_64]   # Chrome for Testing so publica linux64
+      MemorySize: 2048
+      Timeout: 300
+      # Nunca duas varreduras simultaneas: estado consistente, sem
+      # notificacao dupla (spec).
+      ReservedConcurrentExecutions: 1
+      # Sem retry do proprio Lambda em erro assincrono: a proxima varredura
+      # (20 min) e o retry natural.
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+      Environment:
+        Variables:
+          STATE_BUCKET: !Ref StateBucket
+          STATE_KEY: state.json
+          DEBUG_PREFIX: debug/
+          CONFIG_FILE: config.lambda.ini
+          SSM_PREFIX: /aeroes-monitor
+          LOG_LEVEL: INFO
+          # TZ e chave reservada do Lambda: vive como ENV no Dockerfile.
+      Events:
+        Every20Min:
+          Type: ScheduleV2
+          Properties:
+            # 06:00, 06:20, ..., 23:40 BRT = 54 varreduras/dia.
+            ScheduleExpression: cron(0/20 6-23 * * ? *)
+            ScheduleExpressionTimezone: America/Sao_Paulo
+            RetryPolicy:
+              MaximumRetryAttempts: 0
+      Policies:
+        - Statement:
+            - Sid: SsmSecretsReadOnly
+              Effect: Allow
+              Action: ssm:GetParameter
+              Resource:
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/aeroes-monitor/saga-username
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/aeroes-monitor/saga-password
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/aeroes-monitor/discord-webhook-url
+            - Sid: StateReadWrite
+              Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource:
+                - !Sub arn:aws:s3:::aeroes-monitor-state-${AWS::AccountId}/state.json
+                - !Sub arn:aws:s3:::aeroes-monitor-state-${AWS::AccountId}/debug/*
+
+  StateBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub aeroes-monitor-state-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      # Historico gratis do state.json; mitiga o save nao-atomico na nuvem.
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-debug
+            Status: Enabled
+            Prefix: debug/
+            ExpirationInDays: 30
+
+  MonitorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/aeroes-monitor
+      RetentionInDays: 30
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: aeroes-monitor-alerts
+
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  ErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: aeroes-monitor-errors
+      AlarmDescription: >-
+        Handler morrendo sem conseguir avisar o Discord (excecao nao
+        tratada) por 3 janelas seguidas de 20 min.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref MonitorFunction
+      Statistic: Sum
+      Period: 1200
+      EvaluationPeriods: 3
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+Outputs:
+  FunctionName:
+    Value: !Ref MonitorFunction
+  StateBucketName:
+    Value: !Ref StateBucket
+  AlertTopicArn:
+    Value: !Ref AlertTopic
