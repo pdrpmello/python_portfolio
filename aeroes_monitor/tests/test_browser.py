@@ -2,10 +2,13 @@
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from unittest import mock
 
 from selenium.common.exceptions import TimeoutException
 
 from browser import (
+    create_driver,
     element_exists,
     find_all_first_match,
     read_text_from_selectors,
@@ -94,6 +97,41 @@ class DebugArtifactsTest(unittest.TestCase):
 
         with TemporaryDirectory() as tmp:
             save_debug_artifacts(BrokenDriver(), tmp)  # não deve levantar
+
+
+class CreateDriverTest(unittest.TestCase):
+    """create_driver com webdriver.Chrome mockado (sem browser real)."""
+
+    def _cfg(self, **kw):
+        base = dict(
+            headless=True,
+            page_load_timeout_seconds=30,
+            chrome_binary="",
+            chrome_extra_args=(),
+        )
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    def test_chrome_binary_and_extra_args_applied(self):
+        with mock.patch("browser.webdriver.Chrome") as chrome_cls:
+            create_driver(
+                self._cfg(
+                    chrome_binary="/opt/chrome-linux64/chrome",
+                    chrome_extra_args=("--no-sandbox", "--disable-dev-shm-usage"),
+                )
+            )
+        options = chrome_cls.call_args.kwargs["options"]
+        self.assertEqual(options.binary_location, "/opt/chrome-linux64/chrome")
+        self.assertIn("--no-sandbox", options.arguments)
+        self.assertIn("--disable-dev-shm-usage", options.arguments)
+
+    def test_defaults_leave_binary_unset(self):
+        with mock.patch("browser.webdriver.Chrome") as chrome_cls:
+            create_driver(self._cfg())
+        options = chrome_cls.call_args.kwargs["options"]
+        self.assertEqual(options.binary_location, "")
+        self.assertIn("--headless=new", options.arguments)
+        self.assertNotIn("--no-sandbox", options.arguments)
 
 
 if __name__ == "__main__":

@@ -17,12 +17,21 @@ logger = logging.getLogger(__name__)
 
 
 def create_driver(cfg) -> webdriver.Chrome:
-    """Chrome via Selenium Manager (sem gerenciar chromedriver — ADR-0002)."""
+    """Chrome via Selenium Manager (sem gerenciar chromedriver — ADR-0002).
+
+    Em container (Lambda), cfg.chrome_binary aponta o Chrome baked na imagem
+    e cfg.chrome_extra_args traz as flags de sandbox/tmp — com chromedriver
+    pinado no PATH, o Selenium Manager resolve local, sem baixar nada.
+    """
     options = Options()
     if cfg.headless:
         options.add_argument("--headless=new")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-gpu")
+    if cfg.chrome_binary:
+        options.binary_location = cfg.chrome_binary
+    for arg in cfg.chrome_extra_args:
+        options.add_argument(arg)
     driver = webdriver.Chrome(options=options)
     driver.set_page_load_timeout(cfg.page_load_timeout_seconds)
     return driver
