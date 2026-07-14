@@ -1,34 +1,41 @@
-"""Entrypoint AWS Lambda: SSM (segredos) e S3 (estado) ao redor de run_scan.
+"""Entrypoint AWS Lambda: SSM (segredos) e DynamoDB (estado) em volta de run_scan.
 
-Fluxo por invocação (spec 2026-07-12): segredos do SSM (cache de módulo no
-cold start) → GET state.json do S3 para /tmp → mesmo run_scan do modo local
-→ PUT do state de volta → em falha, sobe artefatos de debug para debug/.
+Fluxo por invocação: segredos do SSM (cache no cold start) → GetItem do
+state.json no DynamoDB para /tmp → mesmo run_scan do modo local → PutItem do
+estado. Debug de falha vai ao CloudWatch (run_scan loga o HTML), não mais S3.
 
 Semântica de erro: falha de varredura TRATADA retorna {"ok": false} sem
 exceção (o app já avisou no Discord na transição). Exceção NÃO tratada
-(SSM negado, S3 fora, bug) propaga de propósito — vira métrica Errors e
-dispara o alarme, cobrindo exatamente o buraco em que o Discord não pôde
-ser avisado.
+(SSM/DDB negados, bug) propaga de propósito — vira métrica Errors e dispara o
+alarme, cobrindo exatamente o buraco em que o Discord não pôde ser avisado.
 """
 from __future__ import annotations
 
 import logging
 import os
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import boto3
-from botocore.exceptions import ClientError
 
 from config import load_config
 from main import run_scan, setup_logging
 
+# Logs em BRT no Lambda (Linux). TZ é chave reservada nas env vars da função,
+# então setamos aqui; no-op no Windows local (sem time.tzset).
+if hasattr(time, "tzset"):
+    os.environ.setdefault("TZ", "America/Sao_Paulo")
+    time.tzset()
+
 logger = logging.getLogger(__name__)
 
 STATE_PATH = Path("/tmp/state.json")
+STATE_ID = "state"
 SECRET_NAMES = ("saga-username", "saga-password", "discord-webhook-url")
 
 _ssm_client = None
-_s3_client = None
+_ddb_client = None
 _secrets_cache: dict[str, str] | None = None
 
 
@@ -39,11 +46,11 @@ def _ssm():
     return _ssm_client
 
 
-def _s3():
-    global _s3_client
-    if _s3_client is None:
-        _s3_client = boto3.client("s3")
-    return _s3_client
+def _ddb():
+    global _ddb_client
+    if _ddb_client is None:
+        _ddb_client = boto3.client("dynamodb")
+    return _ddb_client
 
 
 def _load_secrets() -> dict[str, str]:
@@ -60,50 +67,37 @@ def _load_secrets() -> dict[str, str]:
     return _secrets_cache
 
 
-def _download_state(bucket: str, key: str) -> None:
-    """GET state.json → /tmp. Ausente = baseline (como no modo local).
+def _load_state(table: str) -> None:
+    """GetItem → /tmp/state.json. Item ausente = baseline (como no modo local).
 
-    Remove cópia local obsoleta de invocação anterior (warm start); outros
-    erros de S3 propagam (alarme).
+    ConsistentRead: nunca diffar contra réplica atrasada. Remove cópia local
+    obsoleta de invocação anterior (warm start) quando não há item.
     """
-    try:
-        _s3().download_file(bucket, key, str(STATE_PATH))
-    except ClientError as exc:
-        code = str(exc.response.get("Error", {}).get("Code", ""))
-        if code not in ("404", "NoSuchKey"):
-            raise
+    resp = _ddb().get_item(
+        TableName=table, Key={"id": {"S": STATE_ID}}, ConsistentRead=True
+    )
+    item = resp.get("Item")
+    if item and "payload" in item:
+        STATE_PATH.write_text(item["payload"]["S"], encoding="utf-8")
+    else:
         STATE_PATH.unlink(missing_ok=True)
 
 
-def _upload_state(bucket: str, key: str) -> None:
-    """PUT sempre que o arquivo existir (54 PUTs/dia custam nada)."""
+def _save_state(table: str) -> None:
+    """PutItem sempre que o arquivo existir (item único, escrita atômica)."""
     if STATE_PATH.exists():
-        _s3().upload_file(str(STATE_PATH), bucket, key)
-
-
-def _upload_debug_artifacts(bucket: str, prefix: str, debug_dir: Path) -> None:
-    """Sobe e apaga artefatos locais (warm start não re-sobe os antigos).
-
-    Melhor esforço: a varredura já falhou e o Discord já foi avisado;
-    debug perdido não justifica derrubar o handler.
-    """
-    try:
-        if not debug_dir.is_dir():
-            return
-        for artifact in sorted(debug_dir.iterdir()):
-            if artifact.is_file():
-                _s3().upload_file(str(artifact), bucket, f"{prefix}{artifact.name}")
-                artifact.unlink()
-                logger.info(
-                    "Debug enviado: s3://%s/%s%s", bucket, prefix, artifact.name
-                )
-    except Exception:
-        logger.exception("Falha ao subir artefatos de debug")
+        _ddb().put_item(
+            TableName=table,
+            Item={
+                "id": {"S": STATE_ID},
+                "payload": {"S": STATE_PATH.read_text(encoding="utf-8")},
+                "updated_at": {"S": datetime.now(timezone.utc).isoformat()},
+            },
+        )
 
 
 def lambda_handler(event, context) -> dict:
-    bucket = os.environ["STATE_BUCKET"]
-    key = os.environ.get("STATE_KEY", "state.json")
+    table = os.environ["STATE_TABLE"]
     secrets = _load_secrets()
     config = load_config(
         os.environ.get("CONFIG_FILE", "config.lambda.ini"),
@@ -115,13 +109,7 @@ def lambda_handler(event, context) -> dict:
         },
     )
     setup_logging(config.logging)
-    _download_state(bucket, key)
+    _load_state(table)
     ok = run_scan(config, STATE_PATH)
-    _upload_state(bucket, key)
-    if not ok:
-        _upload_debug_artifacts(
-            bucket,
-            os.environ.get("DEBUG_PREFIX", "debug/"),
-            Path(config.selenium.debug_dir),
-        )
+    _save_state(table)
     return {"ok": ok}
