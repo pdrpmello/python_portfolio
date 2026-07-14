@@ -2,8 +2,9 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >-
   aeroes_monitor - varredura read-only da escala SAGA a cada 20 min
-  (06:00-23:40 BRT), estado no S3, segredos no SSM, aviso no Discord.
-  Spec: docs/superpowers/specs/2026-07-12-aws-lambda-deploy-design.md
+  (06:00-23:40 BRT) por HTTP direto, estado no DynamoDB, segredos no SSM,
+  aviso no Discord. Custo estrutural R$ 0/mes.
+  Spec: docs/superpowers/specs/2026-07-13-requests-acquisition-design.md
 
 Parameters:
   AlertEmail:
@@ -14,16 +15,14 @@ Parameters:
 Resources:
   MonitorFunction:
     Type: AWS::Serverless::Function
-    Metadata:
-      Dockerfile: Dockerfile
-      DockerContext: .
-      DockerTag: aeroes-monitor
     Properties:
       FunctionName: aeroes-monitor
-      PackageType: Image
-      Architectures: [x86_64]   # Chrome for Testing so publica linux64
-      MemorySize: 2048
-      Timeout: 300
+      CodeUri: src/
+      Handler: handler.lambda_handler
+      Runtime: python3.13
+      Architectures: [x86_64]
+      MemorySize: 256
+      Timeout: 120
       # Nunca duas varreduras simultaneas: estado consistente, sem
       # notificacao dupla (spec).
       ReservedConcurrentExecutions: 1
@@ -33,13 +32,11 @@ Resources:
         MaximumRetryAttempts: 0
       Environment:
         Variables:
-          STATE_BUCKET: !Ref StateBucket
-          STATE_KEY: state.json
-          DEBUG_PREFIX: debug/
+          STATE_TABLE: !Ref StateTable
           CONFIG_FILE: config.lambda.ini
           SSM_PREFIX: /aeroes-monitor
           LOG_LEVEL: INFO
-          # TZ e chave reservada do Lambda: vive como ENV no Dockerfile.
+          # TZ e chave reservada do Lambda: setada no proprio handler.
       Events:
         Every20Min:
           Type: ScheduleV2
@@ -61,30 +58,25 @@ Resources:
             - Sid: StateReadWrite
               Effect: Allow
               Action:
-                - s3:GetObject
-                - s3:PutObject
-              Resource:
-                - !Sub arn:aws:s3:::aeroes-monitor-state-${AWS::AccountId}/state.json
-                - !Sub arn:aws:s3:::aeroes-monitor-state-${AWS::AccountId}/debug/*
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt StateTable.Arn
 
-  StateBucket:
-    Type: AWS::S3::Bucket
+  StateTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      BucketName: !Sub aeroes-monitor-state-${AWS::AccountId}
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      # Historico gratis do state.json; mitiga o save nao-atomico na nuvem.
-      VersioningConfiguration:
-        Status: Enabled
-      LifecycleConfiguration:
-        Rules:
-          - Id: expire-debug
-            Status: Enabled
-            Prefix: debug/
-            ExpirationInDays: 30
+      TableName: aeroes-monitor-state
+      # Provisioned 1/1 cabe na faixa always-free (25/25); on-demand NAO e gratis.
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
 
   MonitorLogGroup:
     Type: AWS::Logs::LogGroup
@@ -128,7 +120,7 @@ Resources:
 Outputs:
   FunctionName:
     Value: !Ref MonitorFunction
-  StateBucketName:
-    Value: !Ref StateBucket
+  StateTableName:
+    Value: !Ref StateTable
   AlertTopicArn:
     Value: !Ref AlertTopic
