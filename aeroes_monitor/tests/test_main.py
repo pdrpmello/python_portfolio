@@ -22,15 +22,12 @@ def _config():
             min_flight_minutes=60,
             max_flight_minutes=120,
         ),
-        selenium=SimpleNamespace(
-            base_url="https://saga.example.com",
+        saga=SimpleNamespace(
+            base_url="https://saga.example.com/login",
             schedule_url="https://saga.example.com/schedules/personal",
-            headless=True,
-            page_load_timeout_seconds=5,
-            element_timeout_seconds=5,
+            request_timeout_seconds=30,
             debug_dir="debug",
         ),
-        selectors={},
         aircraft={"PT-ABC": "C-152"},
         logging=SimpleNamespace(level="INFO", file=""),
     )
@@ -66,9 +63,7 @@ class ParseArgsTest(unittest.TestCase):
         self.assertEqual(args.config, "outro.ini")
 
 
-@mock.patch("main.ScheduleScanner")
-@mock.patch("main.login")
-@mock.patch("main.create_driver")
+@mock.patch("main.saga_http")
 @mock.patch("main.DiscordNotifier")
 class RunScanTest(unittest.TestCase):
     def setUp(self):
@@ -76,11 +71,9 @@ class RunScanTest(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.state_path = Path(self._tmp.name) / "state.json"
 
-    def test_first_run_sends_baseline_and_saves_state(
-        self, notifier_cls, create_driver, do_login, scanner_cls
-    ):
+    def test_first_run_sends_baseline_and_saves_state(self, notifier_cls, saga_http):
         notifier = notifier_cls.return_value
-        scanner_cls.return_value.scan.return_value = _scan_result()
+        saga_http.scan.return_value = _scan_result()
         self.assertTrue(run_scan(_config(), self.state_path))
         notifier.send_report.assert_called_once()
         notifier.send_message.assert_not_called()
@@ -89,11 +82,9 @@ class RunScanTest(unittest.TestCase):
         self.assertEqual(len(state.windows), 1)
         self.assertEqual(state.days, frozenset({"2026-07-11"}))
 
-    def test_no_changes_is_silent(
-        self, notifier_cls, create_driver, do_login, scanner_cls
-    ):
+    def test_no_changes_is_silent(self, notifier_cls, saga_http):
         notifier = notifier_cls.return_value
-        scanner_cls.return_value.scan.return_value = _scan_result()
+        saga_http.scan.return_value = _scan_result()
         run_scan(_config(), self.state_path)  # baseline
         notifier.reset_mock()
         self.assertTrue(run_scan(_config(), self.state_path))
@@ -101,44 +92,37 @@ class RunScanTest(unittest.TestCase):
         notifier.send_message.assert_not_called()
         notifier.send_error.assert_not_called()
 
-    def test_new_window_notifies_openings_only(
-        self, notifier_cls, create_driver, do_login, scanner_cls
-    ):
+    def test_new_window_notifies_openings_only(self, notifier_cls, saga_http):
         notifier = notifier_cls.return_value
-        # Baseline com o dia inteiro ocupado ⇒ nenhuma janela.
-        scanner_cls.return_value.scan.return_value = _scan_result(
+        saga_http.scan.return_value = _scan_result(
             busy=(TimePeriod(start=time(6, 0), end=time(17, 0)),)
         )
         run_scan(_config(), self.state_path)
         notifier.reset_mock()
-        # Cancelaram tudo ⇒ abre janela nova.
-        scanner_cls.return_value.scan.return_value = _scan_result()
+        saga_http.scan.return_value = _scan_result()
         self.assertTrue(run_scan(_config(), self.state_path))
         notifier.send_message.assert_called_once()
         self.assertIn("Abriu horário", notifier.send_message.call_args.args[0])
         self.assertIn("PT-ABC C-152", notifier.send_message.call_args.args[0])
         notifier.send_report.assert_not_called()
 
-    def test_error_notifies_only_on_transition(
-        self, notifier_cls, create_driver, do_login, scanner_cls
-    ):
+    def test_error_notifies_only_on_transition(self, notifier_cls, saga_http):
         notifier = notifier_cls.return_value
-        scanner_cls.return_value.scan.return_value = _scan_result()
+        saga_http.scan.return_value = _scan_result()
         run_scan(_config(), self.state_path)  # baseline ok
         notifier.reset_mock()
-        scanner_cls.return_value.scan.side_effect = RuntimeError("SAGA fora do ar")
-        with mock.patch("main.save_debug_artifacts"):
-            self.assertFalse(run_scan(_config(), self.state_path))
-            notifier.send_error.assert_called_once()  # transição ok→falha
-            notifier.reset_mock()
-            self.assertFalse(run_scan(_config(), self.state_path))
-            notifier.send_error.assert_not_called()  # falha repetida: silêncio
+        saga_http.scan.side_effect = RuntimeError("SAGA fora do ar")
+        self.assertFalse(run_scan(_config(), self.state_path))
+        notifier.send_error.assert_called_once()  # transição ok→falha
+        notifier.reset_mock()
+        self.assertFalse(run_scan(_config(), self.state_path))
+        notifier.send_error.assert_not_called()  # falha repetida: silêncio
         state = load_state(self.state_path)
         self.assertFalse(state.last_scan_ok)
         self.assertEqual(len(state.windows), 1)  # janelas preservadas
 
     def test_recovery_notifies_and_diffs_against_preserved_windows(
-        self, notifier_cls, create_driver, do_login, scanner_cls
+        self, notifier_cls, saga_http
     ):
         notifier = notifier_cls.return_value
         save_state(
@@ -149,23 +133,20 @@ class RunScanTest(unittest.TestCase):
                 last_scan_ok=False,
             ),
         )
-        scanner_cls.return_value.scan.return_value = _scan_result()
+        saga_http.scan.return_value = _scan_result()
         self.assertTrue(run_scan(_config(), self.state_path))
         sent = [c.args[0] for c in notifier.send_message.call_args_list]
         self.assertTrue(any("voltou a funcionar" in m for m in sent))
-        # Janela é a mesma do estado preservado ⇒ nenhum "Abriu horário".
         self.assertFalse(any("Abriu horário" in m for m in sent))
 
-    def test_degraded_scan_counts_as_failure(
-        self, notifier_cls, create_driver, do_login, scanner_cls
-    ):
+    def test_degraded_scan_counts_as_failure(self, notifier_cls, saga_http):
         from models import ScanError
 
         notifier = notifier_cls.return_value
-        scanner_cls.return_value.scan.return_value = _scan_result()
+        saga_http.scan.return_value = _scan_result()
         run_scan(_config(), self.state_path)
         notifier.reset_mock()
-        scanner_cls.return_value.scan.return_value = ScanResult(
+        saga_http.scan.return_value = ScanResult(
             days=(), errors=(ScanError(day_index=0, day_label="sol", message="sem sol"),)
         )
         self.assertFalse(run_scan(_config(), self.state_path))
@@ -175,44 +156,44 @@ class RunScanTest(unittest.TestCase):
         self.assertEqual(len(state.windows), 1)  # preservadas
 
     def test_failure_without_state_notifies_but_keeps_baseline_pending(
-        self, notifier_cls, create_driver, do_login, scanner_cls
+        self, notifier_cls, saga_http
     ):
         notifier = notifier_cls.return_value
-        scanner_cls.return_value.scan.side_effect = RuntimeError("boom")
-        with mock.patch("main.save_debug_artifacts"):
-            self.assertFalse(run_scan(_config(), self.state_path))
+        saga_http.scan.side_effect = RuntimeError("boom")
+        self.assertFalse(run_scan(_config(), self.state_path))
         notifier.send_error.assert_called_once()
         self.assertIsNone(load_state(self.state_path))  # baseline continua pendente
 
-    def test_driver_quit_failure_does_not_break_result(
-        self, notifier_cls, create_driver, do_login, scanner_cls
-    ):
-        create_driver.return_value.quit.side_effect = RuntimeError("já fechado")
-        scanner_cls.return_value.scan.return_value = _scan_result()
-        self.assertTrue(run_scan(_config(), self.state_path))
-
-    def test_state_write_failure_does_not_propagate(
-        self, notifier_cls, create_driver, do_login, scanner_cls
-    ):
+    def test_state_write_failure_does_not_propagate(self, notifier_cls, saga_http):
         """Contrato de run_scan: OSError persistente no save_state não estoura."""
-        scanner_cls.return_value.scan.return_value = _scan_result()
+        saga_http.scan.return_value = _scan_result()
         run_scan(_config(), self.state_path)  # baseline com estado gravado
         with mock.patch(
             "main.save_state", side_effect=OSError("state.json travado pelo OneDrive")
         ):
             self.assertFalse(run_scan(_config(), self.state_path))
 
-    def test_discord_outage_does_not_propagate(
-        self, notifier_cls, create_driver, do_login, scanner_cls
-    ):
+    def test_discord_outage_does_not_propagate(self, notifier_cls, saga_http):
         """Discord fora do ar: send_* falhando (inclusive no handler) não estoura."""
         notifier = notifier_cls.return_value
         notifier.send_report.side_effect = ConnectionError("discord fora do ar")
         notifier.send_error.side_effect = ConnectionError("discord fora do ar")
-        scanner_cls.return_value.scan.return_value = _scan_result()
-        with mock.patch("main.save_debug_artifacts"):
-            self.assertFalse(run_scan(_config(), self.state_path))
+        saga_http.scan.return_value = _scan_result()
+        self.assertFalse(run_scan(_config(), self.state_path))
         self.assertIsNone(load_state(self.state_path))  # baseline continua pendente
+
+    def test_failure_with_page_html_saves_debug(self, notifier_cls, saga_http):
+        """Exceção com page_html: HTML salvo em debug_dir para recalibração."""
+        with tempfile.TemporaryDirectory() as dbg:
+            cfg = _config()
+            cfg.saga.debug_dir = dbg
+            exc = RuntimeError("layout mudou")
+            exc.page_html = "<html>falha</html>"
+            saga_http.scan.side_effect = exc
+            self.assertFalse(run_scan(cfg, self.state_path))
+            files = list(Path(dbg).glob("*-fatal.html"))
+            self.assertEqual(len(files), 1)
+            self.assertEqual(files[0].read_text(encoding="utf-8"), "<html>falha</html>")
 
 
 class MainExitCodesTest(unittest.TestCase):

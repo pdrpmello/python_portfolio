@@ -12,11 +12,12 @@ import sys
 import time
 from pathlib import Path
 
+from datetime import datetime
+
+import saga_http
 from availability import AvailabilityRules, enrich_day_schedule
-from browser import create_driver, save_debug_artifacts
 from config import AppConfig, ConfigError, config_to_safe_dict, load_config
 from discord import DiscordNotifier
-from login import login
 from notifications import (
     NotifyState,
     diff_new_windows,
@@ -26,7 +27,6 @@ from notifications import (
     save_state,
 )
 from report import build_openings_message, build_report
-from scheduler import ScheduleScanner
 
 logger = logging.getLogger("aeroes_monitor")
 
@@ -54,13 +54,6 @@ def setup_logging(cfg) -> None:
         handlers=handlers,
         force=True,
     )
-
-
-def _quit_quietly(driver) -> None:
-    try:
-        driver.quit()
-    except Exception:
-        logger.warning("Falha ao encerrar o browser", exc_info=True)
 
 
 def _notify_failure(notifier, previous, message: str) -> None:
@@ -96,15 +89,33 @@ def _save_failure_state(state_path, previous) -> None:
             logger.warning("Falha ao gravar state.json; estado antigo mantido", exc_info=True)
 
 
+def _save_failure_debug(config, exc) -> None:
+    """HTML da resposta no momento da falha: arquivo em debug_dir (útil no PC)
+    e no log (única via de recuperação no Lambda — sem browser nem S3).
+
+    Melhor esforço: roda dentro do handler de exceção de run_scan.
+    """
+    page_html = getattr(exc, "page_html", None)
+    if not page_html:
+        return
+    try:
+        directory = Path(config.saga.debug_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        path = directory / f"{stamp}-fatal.html"
+        path.write_text(page_html, encoding="utf-8")
+        logger.info("HTML de debug salvo em %s", path)
+    except Exception:
+        logger.exception("Falha ao salvar HTML de debug em disco")
+    logger.info("HTML da página na falha (%d bytes):\n%s", len(page_html), page_html)
+
+
 def run_scan(config: AppConfig, state_path: Path) -> bool:
     """Uma varredura completa. Nunca propaga exceção (o loop sobrevive)."""
     notifier = DiscordNotifier(config.discord.webhook_url)
     previous = load_state(state_path)
-    driver = None
     try:
-        driver = create_driver(config.selenium)
-        login(driver, config)
-        result = ScheduleScanner(driver, config).scan()
+        result = saga_http.scan(config)
         if not result.days and result.errors:
             message = "; ".join(e.message for e in result.errors)
             logger.error("Varredura degradada: %s", message)
@@ -145,14 +156,10 @@ def run_scan(config: AppConfig, state_path: Path) -> bool:
         return True
     except Exception as exc:
         logger.exception("Falha fatal na varredura")
-        if driver is not None:
-            save_debug_artifacts(driver, config.selenium.debug_dir, tag="fatal")
+        _save_failure_debug(config, exc)
         _notify_failure(notifier, previous, str(exc))
         _save_failure_state(state_path, previous)
         return False
-    finally:
-        if driver is not None:
-            _quit_quietly(driver)
 
 
 def main(argv=None) -> int:

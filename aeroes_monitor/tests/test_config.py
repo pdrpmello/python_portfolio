@@ -3,13 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from config import (
-    DEFAULT_SELECTORS,
-    AppConfig,
-    ConfigError,
-    config_to_safe_dict,
-    load_config,
-)
+from config import AppConfig, ConfigError, config_to_safe_dict, load_config
 
 VALID_INI = """
 [credentials]
@@ -19,22 +13,13 @@ password = s3cr3t
 [discord]
 webhook_url = https://discord.com/api/webhooks/123/abc
 
-[selenium]
+[saga]
 base_url = https://saga.example.com/login
 
 [aircraft]
 PT-ABC = Cessna 152
 PT-XYZ = Cessna 172
 """
-
-CHROME_INI = VALID_INI.replace(
-    "base_url = https://saga.example.com/login",
-    """base_url = https://saga.example.com/login
-chrome_binary = /opt/chrome-linux64/chrome
-chrome_extra_args =
-    --no-sandbox
-    --disable-dev-shm-usage""",
-)
 
 
 def _write_ini(directory: str, content: str) -> Path:
@@ -50,14 +35,11 @@ class LoadConfigTest(unittest.TestCase):
         self.assertIsInstance(config, AppConfig)
         self.assertEqual(config.credentials.username, "piloto@example.com")
         self.assertEqual(config.monitor.max_days, 30)
-        self.assertEqual(config.monitor.check_interval_seconds, 3600)
-        self.assertEqual(config.monitor.turnaround_minutes, 30)
-        self.assertEqual(config.monitor.min_flight_minutes, 60)
-        self.assertEqual(config.monitor.max_flight_minutes, 120)
-        self.assertTrue(config.selenium.headless)
-        self.assertEqual(config.selenium.debug_dir, "debug")
+        self.assertEqual(config.saga.base_url, "https://saga.example.com/login")
+        self.assertEqual(config.saga.schedule_url, "")
+        self.assertEqual(config.saga.request_timeout_seconds, 30)
+        self.assertEqual(config.saga.debug_dir, "debug")
         self.assertEqual(config.logging.level, "INFO")
-        self.assertEqual(config.selectors, DEFAULT_SELECTORS)
 
     def test_aircraft_preserves_case(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -66,27 +48,35 @@ class LoadConfigTest(unittest.TestCase):
             config.aircraft, {"PT-ABC": "Cessna 152", "PT-XYZ": "Cessna 172"}
         )
 
-    def test_selector_override_multiline(self):
-        ini = VALID_INI + """
-[selectors]
-login_username =
-    input[name="email"]
-    #campo-email
+    def test_saga_fields_parsed(self):
+        ini = """
+[credentials]
+username = piloto@example.com
+password = s3cr3t
+
+[discord]
+webhook_url = https://discord.com/api/webhooks/123/abc
+
+[saga]
+base_url = https://saga.example.com/login
+schedule_url = https://saga.example.com/schedules/personal
+request_timeout_seconds = 45
+debug_dir = /tmp/debug
+
+[aircraft]
+PT-ABC = Cessna 152
 """
         with tempfile.TemporaryDirectory() as tmp:
             config = load_config(_write_ini(tmp, ini))
         self.assertEqual(
-            config.selectors["login_username"],
-            ('input[name="email"]', "#campo-email"),
+            config.saga.schedule_url, "https://saga.example.com/schedules/personal"
         )
-        # Chaves não sobrescritas mantêm o default.
-        self.assertEqual(
-            config.selectors["login_password"], DEFAULT_SELECTORS["login_password"]
-        )
+        self.assertEqual(config.saga.request_timeout_seconds, 45)
+        self.assertEqual(config.saga.debug_dir, "/tmp/debug")
 
     def test_overrides_fill_missing_sections_and_win_over_file(self):
         ini = """
-[selenium]
+[saga]
 base_url = https://saga.example.com/login
 
 [aircraft]
@@ -103,12 +93,10 @@ max_days = 10
         }
         with tempfile.TemporaryDirectory() as tmp:
             config = load_config(_write_ini(tmp, ini), overrides=overrides)
-        # Seções ausentes no .ini são criadas pelo override…
         self.assertEqual(config.credentials.username, "piloto@example.com")
         self.assertEqual(
             config.discord.webhook_url, "https://discord.com/api/webhooks/1/a"
         )
-        # …e override vence valor existente no arquivo.
         self.assertEqual(config.monitor.max_days, 5)
 
     def test_no_overrides_keeps_current_behavior(self):
@@ -116,25 +104,10 @@ max_days = 10
             config = load_config(_write_ini(tmp, VALID_INI), overrides=None)
         self.assertEqual(config.credentials.username, "piloto@example.com")
 
-    def test_chrome_fields_default_empty(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            config = load_config(_write_ini(tmp, VALID_INI))
-        self.assertEqual(config.selenium.chrome_binary, "")
-        self.assertEqual(config.selenium.chrome_extra_args, ())
-
-    def test_chrome_extra_args_one_per_line(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            config = load_config(_write_ini(tmp, CHROME_INI))
-        self.assertEqual(config.selenium.chrome_binary, "/opt/chrome-linux64/chrome")
-        self.assertEqual(
-            config.selenium.chrome_extra_args,
-            ("--no-sandbox", "--disable-dev-shm-usage"),
-        )
-
     def test_missing_required_lists_all_errors(self):
         ini = """
 [credentials]
-username = x
+username = so-usuario
 """
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ConfigError) as ctx:
@@ -142,7 +115,7 @@ username = x
         message = str(ctx.exception)
         self.assertIn("credentials.password", message)
         self.assertIn("discord.webhook_url", message)
-        self.assertIn("selenium.base_url", message)
+        self.assertIn("saga.base_url", message)
         self.assertIn("aircraft", message)
 
     def test_numeric_validations(self):
@@ -210,15 +183,10 @@ class LambdaIniTest(unittest.TestCase):
                 ("discord", "webhook_url"): "https://discord.com/api/webhooks/1/a",
             },
         )
-        self.assertEqual(
-            config.selenium.chrome_binary, "/opt/chrome-linux64/chrome"
-        )
-        self.assertIn("--no-sandbox", config.selenium.chrome_extra_args)
-        self.assertEqual(config.selenium.debug_dir, "/tmp/debug")
+        self.assertEqual(config.saga.base_url, "https://aeroes.saga.aero/login")
+        self.assertEqual(config.saga.request_timeout_seconds, 30)
+        self.assertEqual(config.saga.debug_dir, "/tmp/debug")
         self.assertIn("PP-AYB", config.aircraft)
-        self.assertEqual(
-            config.selectors["logged_in_marker"][0], "#navbarDropdownProfile"
-        )
 
 
 if __name__ == "__main__":
