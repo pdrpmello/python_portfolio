@@ -22,6 +22,15 @@ LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 UTC = ZoneInfo("UTC")
 
 
+def local_today() -> date:
+    """Data atual no fuso do aeroclube, não no da máquina.
+
+    Em servidor UTC (Lambda), date.today() viraria o dia seguinte entre
+    21:00 e 00:00 BRT e a varredura olharia a grade errada.
+    """
+    return datetime.now(LOCAL_TZ).date()
+
+
 def parse_sun_xml(xml_text: str) -> tuple[time, time] | None:
     """(nascer, pôr) em UTC a partir do XML de /aisweb/sun/SBVT; None se inválido."""
     try:

@@ -15,21 +15,22 @@ A ação de reservar continua 100% manual, no próprio SAGA.
 ## Requisitos
 
 - Python 3.13+
-- Google Chrome instalado (o chromedriver é resolvido automaticamente pelo
-  Selenium Manager — nada para baixar)
 - Um webhook de Discord
+
+A aquisição é por HTTP direto (`requests`) — não há browser nem Chrome a
+instalar (ADR-0011).
 
 ## Instalação
 
 ```
 python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m pip install -r src\requirements.txt
 ```
 
 ## Configuração
 
 1. Copie `config.ini.example` para `config.ini`.
-2. Preencha `[credentials]`, `[discord] webhook_url` e `[selenium] base_url`.
+2. Preencha `[credentials]`, `[discord] webhook_url` e `[saga] base_url`.
 3. Liste em `[aircraft]` as aeronaves a monitorar (`MATRICULA = modelo`).
    Só elas aparecem no relatório (ADR-0007).
 
@@ -39,8 +40,8 @@ senha e webhook automaticamente.
 ## Uso
 
 ```
-.venv\Scripts\python main.py --once   # uma varredura e sai
-.venv\Scripts\python main.py          # loop contínuo (intervalo do config.ini)
+.venv\Scripts\python src\main.py --once   # uma varredura e sai
+.venv\Scripts\python src\main.py          # loop contínuo (intervalo do config.ini)
 ```
 
 Códigos de saída de `--once`: `0` sucesso, `1` varredura falhou, `2` erro
@@ -77,28 +78,18 @@ sozinha (um relatório completo novo, sem alarme falso).
   arredondado para cima (06:17 → 06:30) e, no sábado, termina no pôr do
   sol arredondado para baixo (17:23 → 17:00).
 
-## Calibração de seletores (só login/sessão)
+## Aquisição da escala (HTTP direto)
 
-Os seletores CSS cobrem **apenas login e detecção de sessão** — a escala
-não é raspada do DOM: ela é lida da variável `allSchedules` que a própria
-página carrega (ADR-0010). Os defaults de login já batem com o SAGA real
-(calibrados em 2026-07-09); só recalibre se o login quebrar (ADR-0003):
-
-1. Rode com `headless = false` para ver o browser.
-2. Abra o SAGA manualmente no Chrome e vá até a tela de login.
-3. F12 (DevTools) → botão de inspecionar → clique no elemento desejado
-   (campo de e-mail, senha, botão de entrar; para `logged_in_marker`,
-   algo sempre **visível** após o login).
-4. Anote um seletor CSS estável (prefira `name`, `id` ou classes
-   descritivas; evite classes geradas/aleatórias).
-5. Descomente `[selectors]` no `config.ini` e preencha as chaves — um
-   seletor por linha; a ordem é a ordem de tentativa.
-6. Rode `python main.py --once` e ajuste até o login completar.
-
-Em caso de falha, o monitor salva screenshot + HTML em `debug/` — use-os
-para descobrir o que mudou.
+A varredura é uma sessão `requests`: login (único POST — ADR-0001), leitura
+da variável `allSchedules` embutida no HTML da página (ADR-0010) e do XML de
+nascer/pôr do sol (ADR-0008). Não há browser nem seletores CSS a calibrar
+(ADR-0011). Em falha de login ou de layout, o HTML da resposta é salvo em
+`debug/` (e vai ao log no Lambda) — é por ele que se confere o que mudou.
 
 ## Arquitetura
+
+Os módulos de runtime vivem em `src/` (é o que o `sam build` empacota; o
+`config.ini` com segredos fica fora, na raiz do projeto).
 
 | Módulo | Papel |
 |--------|-------|
@@ -109,9 +100,7 @@ para descobrir o que mudou.
 | `notifications.py` | política "só aberturas novas" + `state.json` |
 | `report.py` | formatação das janelas livres (relatório e aberturas) |
 | `discord.py` | webhook + fragmentação em 2000 chars (ADR-0006) |
-| `browser.py` | Chrome/Selenium, esperas, artefatos de debug |
-| `login.py` | autenticação e detecção de sessão expirada |
-| `scheduler.py` | aquisição: `allSchedules` + sol, na sessão autenticada (ADR-0010) |
+| `saga_http.py` | aquisição HTTP: login + `allSchedules` + sol numa sessão `requests` (ADR-0011) |
 | `saga_data.py` | JSON/XML brutos do SAGA → domínio, puro (ADR-0010) |
 | `utils.py` | parsing puro de texto (horários, matrículas) |
 
@@ -124,23 +113,25 @@ Decisões registradas em [`docs/adr/`](docs/adr/README.md); requisitos em
 .venv\Scripts\python -m unittest -v
 ```
 
-Toda a lógica de negócio roda sem browser (ADR-0004). A camada Selenium é
-testada com fakes; nenhum teste abre Chrome nem toca o SAGA real.
+Toda a lógica de negócio roda sem browser (ADR-0004). A aquisição HTTP é
+testada com uma sessão `requests` falsa; nenhum teste toca a rede nem o
+SAGA real.
 
 ## Solução de problemas
 
-- **`TimeoutException: Nenhum seletor visível`** — seletor de login
-  desatualizado; recalibre (seção acima) usando os artefatos de `debug/`.
+- **`LoginError` / login não confirmado** — o form de login do SAGA mudou ou
+  as credenciais estão erradas. O HTML da página no momento da falha é salvo
+  em `debug/` (e vai ao log no Lambda); confira os campos `_token`, `email`,
+  `password` contra `saga_http.py`.
 - **`allSchedules não encontrado na página da escala`** — confira
-  `selenium.schedule_url` (deve apontar para Escala → Meus Voos). Se a URL
-  está certa, o SAGA mudou o contrato da página (ADR-0010) — inspecione os
-  artefatos de `debug/`.
+  `saga.schedule_url` (deve apontar para Escala → Meus Voos). Se a URL
+  está certa, o SAGA mudou o contrato da página (ADR-0010) — inspecione o
+  HTML de `debug/`.
 - **Sol indisponível** — o endpoint `/aisweb/sun/SBVT` falhou; a varredura
   sai sem janelas e reporta ⚠️ (ADR-0008). Normaliza sozinho quando o
   endpoint voltar.
 - **Nada chega no Discord** — teste o webhook com
   `curl -X POST -H "Content-Type: application/json" -d "{\"content\": \"teste\"}" URL_DO_WEBHOOK`.
-- **Sessão expira no meio** — reautenticação é automática (F2); veja o log.
 
 ## Limitações conhecidas
 
@@ -149,5 +140,64 @@ testada com fakes; nenhum teste abre Chrome nem toca o SAGA real.
   (sem banco de dados).
 - Nascer/pôr do sol dos dias futuros é aproximação do valor de hoje —
   desvio ≤ ~7 min no fim da janela de 30 dias (ADR-0008).
-- Uma mudança no SAGA exige recalibração dos seletores de login ou pode
-  quebrar o contrato `allSchedules` (ADR-0010).
+- Uma mudança no form de login do SAGA ou no contrato `allSchedules` pode
+  quebrar a aquisição (ADR-0011 / ADR-0010) — o monitor avisa no Discord.
+
+## Deploy na AWS (Lambda)
+
+O monitor roda sem PC ligado e **sem custo** (R$ 0/mês estrutural):
+EventBridge Scheduler dispara um Lambda **zip** a cada 20 min (06:00–23:40,
+horário de Brasília), o estado vive em uma tabela DynamoDB
+(`aeroes-monitor-state`, item único) e os segredos em SSM Parameter Store
+(SecureString). A aquisição é por HTTP direto (`requests`), sem browser —
+por isso não há container nem ECR. Infra inteira em `template.yaml` (SAM).
+Design: `docs/superpowers/specs/2026-07-13-requests-acquisition-design.md`.
+
+O fluxo local (`python src/main.py` com `config.ini`) segue funcionando — mas
+não rode os dois ao mesmo tempo: PC + AWS no mesmo webhook duplicam toda
+notificação.
+
+### Arquivos
+
+- `src/handler.py` — entrypoint do Lambda (DynamoDB + SSM em volta de
+  `run_scan`).
+- `src/config.lambda.ini` — config **não-secreta** da nuvem (commitada; sem
+  seções de credenciais/Discord — o handler injeta os segredos do SSM via
+  `load_config(..., overrides=...)`).
+- `template.yaml` — função zip (`CodeUri: src/`, 256 MB / 120 s /
+  concorrência 1), tabela DynamoDB provisioned 1/1 (dentro do always-free),
+  agendamento `cron(0/20 6-23 * * ? *)` no fuso `America/Sao_Paulo`, alarme
+  `Errors >= 1` (3×20 min) → SNS → e-mail.
+
+### Pré-requisitos (uma vez)
+
+1. Instalar AWS CLI e SAM CLI: `winget install -e --id Amazon.AWSCLI` e
+   `winget install -e --id Amazon.SAM-CLI`. **Docker não é necessário** (zip).
+2. Conta AWS nova: escolher o **plano pago** na inscrição (os créditos de
+   boas-vindas valem 12 meses; o plano free fecha a conta em 6 meses).
+   Usuário IAM de deploy dedicado com MFA + access key (**jamais** a do root)
+   → `aws configure` (região `sa-east-1`).
+3. Criar os 3 segredos (senha via prompt, fora do histórico do shell):
+
+   ```powershell
+   aws ssm put-parameter --name /aeroes-monitor/saga-username --type SecureString --value (Read-Host "usuário SAGA")
+   $sec = Read-Host "senha SAGA" -AsSecureString
+   aws ssm put-parameter --name /aeroes-monitor/saga-password --type SecureString --value ([Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)))
+   aws ssm put-parameter --name /aeroes-monitor/discord-webhook-url --type SecureString --value (Read-Host "webhook Discord")
+   ```
+
+### Build e deploy
+
+```powershell
+sam build          # resolve requirements.txt puro-Python; sem Docker
+sam deploy --guided   # 1ª vez (gera samconfig.toml); depois só: sam deploy
+```
+
+Após o primeiro deploy: confirmar a assinatura SNS no e-mail, invocar
+manualmente (`aws lambda invoke --function-name aeroes-monitor out.json`),
+conferir o baseline no Discord e **desligar o modo contínuo no PC**.
+Logs: `sam logs --stack-name aeroes-monitor --tail`.
+
+> **Plano B (container):** se o SAGA um dia bloquear clientes sem browser, a
+> rota Selenium+container está preservada no git (commit `cf0f83f`) e volta
+> com custo ~R$ 1/mês de ECR.
