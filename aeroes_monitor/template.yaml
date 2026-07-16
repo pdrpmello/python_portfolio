@@ -19,13 +19,17 @@ Resources:
       FunctionName: aeroes-monitor
       CodeUri: src/
       Handler: handler.lambda_handler
-      Runtime: python3.13
+      Runtime: python3.14
       Architectures: [x86_64]
       MemorySize: 256
       Timeout: 120
-      # Nunca duas varreduras simultaneas: estado consistente, sem
-      # notificacao dupla (spec).
-      ReservedConcurrentExecutions: 1
+      # A garantia "nunca duas varreduras simultaneas" (estado consistente,
+      # sem notificacao dupla) usava ReservedConcurrentExecutions: 1, mas
+      # conta AWS nova tem teto de concorrencia = 10 e exige pool nao-reservado
+      # >= 10 -> reservar 1 deixaria 9 < 10 e o deploy falha. Overlap ja e
+      # impedido na pratica: agenda de 20 em 20 min, timeout 120 s (nunca
+      # encosta na proxima janela) e zero retry. Para a garantia dura, pedir
+      # aumento do limite de concorrencia e readicionar a linha aqui.
       # Sem retry do proprio Lambda em erro assincrono: a proxima varredura
       # (20 min) e o retry natural.
       EventInvokeConfig:
