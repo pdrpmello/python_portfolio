@@ -1,7 +1,9 @@
 # ADR-0003: Seletores CSS externalizados em `config.ini`
 
 ## Status
-Aceito
+Superado por [[0011-http-direto-sem-browser]] (2026-07-13): com a aquisição
+HTTP, não há mais DOM a selecionar; a seção `[selectors]` e os defaults foram
+removidos. Contexto histórico preservado abaixo.
 
 ## Contexto
 Como consequência de [[0002-selenium-over-api]], o monitor depende de seletores CSS para localizar elementos na página do SAGA. O layout é mantido por terceiros e pode mudar sem aviso.

@@ -1,0 +1,13 @@
+# Parâmetros do deploy do aeroes_monitor (gerado no 1º deploy, 2026-07-15).
+# Sem segredos: só nome da stack, região e capabilities. Com isto, o deploy
+# vira só `sam deploy` (sem as flags). Os segredos vivem no SSM.
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "aeroes-monitor"
+resolve_s3 = true
+s3_prefix = "aeroes-monitor"
+region = "sa-east-1"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+no_fail_on_empty_changeset = true

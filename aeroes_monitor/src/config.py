@@ -1,9 +1,9 @@
 """Carrega e valida config.ini → dataclasses frozen (ADR-0005).
 
-Seletores CSS ficam em [selectors] com defaults embutidos (ADR-0003):
-um seletor por linha (vírgula é sintaxe CSS válida, não separador).
-Hoje cobrem só login/sessão — a leitura da agenda usa a variável
-allSchedules exposta pela página, não mais scraping de DOM (ADR-0010).
+A aquisição da escala é por HTTP direto (ADR-0011): a seção [saga] traz a
+URL de login, a da escala e o timeout. Sem seletores CSS (o antigo
+[selectors] saiu com o Selenium). No Lambda, segredos entram como
+`overrides` de load_config (SSM → memória), nunca por arquivo.
 """
 from __future__ import annotations
 
@@ -15,27 +15,6 @@ from typing import Any
 
 class ConfigError(Exception):
     """Configuração ausente ou inválida."""
-
-
-DEFAULT_SELECTORS: dict[str, tuple[str, ...]] = {
-    "login_username": (
-        'input[name="email"]',
-        'input[type="email"]',
-        'input[name="username"]',
-        "#email",
-    ),
-    "login_password": ('input[name="password"]', 'input[type="password"]', "#password"),
-    "login_submit": ('button[type="submit"]', 'input[type="submit"]', ".btn-login"),
-    "login_form": ("form.login", "form#login", 'input[type="password"]'),
-    # Precisa estar VISÍVEL pós-login (o a[href*="logout"] fica oculto no
-    # dropdown do perfil do SAGA) — calibrado em 2026-07-09.
-    "logged_in_marker": (
-        "#navbarDropdownProfile",
-        "#menuSearch",
-        'a.nav-link[href="/dashboard"]',
-        ".user-menu",
-    ),
-}
 
 
 @dataclass(frozen=True)
@@ -59,12 +38,10 @@ class MonitorConfig:
 
 
 @dataclass(frozen=True)
-class SeleniumConfig:
+class SagaConfig:
     base_url: str
     schedule_url: str = ""
-    headless: bool = True
-    page_load_timeout_seconds: int = 30
-    element_timeout_seconds: int = 15
+    request_timeout_seconds: int = 30
     debug_dir: str = "debug"
 
 
@@ -79,8 +56,7 @@ class AppConfig:
     credentials: CredentialsConfig
     discord: DiscordConfig
     monitor: MonitorConfig
-    selenium: SeleniumConfig
-    selectors: dict[str, tuple[str, ...]]
+    saga: SagaConfig
     aircraft: dict[str, str]
     logging: LoggingConfig
 
@@ -123,18 +99,6 @@ def _get_bool(
         return default
 
 
-def _load_selectors(parser: configparser.ConfigParser) -> dict[str, tuple[str, ...]]:
-    selectors = dict(DEFAULT_SELECTORS)
-    if parser.has_section("selectors"):
-        for key, raw in parser.items("selectors"):
-            candidates = tuple(
-                line.strip() for line in raw.splitlines() if line.strip()
-            )
-            if candidates:
-                selectors[key] = candidates
-    return selectors
-
-
 def _load_aircraft(
     parser: configparser.ConfigParser, errors: list[str]
 ) -> dict[str, str]:
@@ -151,7 +115,9 @@ def _load_aircraft(
     return aircraft
 
 
-def load_config(path: str | Path) -> AppConfig:
+def load_config(
+    path: str | Path, overrides: dict[tuple[str, str], str] | None = None
+) -> AppConfig:
     path = Path(path)
     if not path.exists():
         raise ConfigError(
@@ -163,6 +129,13 @@ def load_config(path: str | Path) -> AppConfig:
     parser = configparser.ConfigParser(interpolation=None, comment_prefixes=(";",))
     parser.optionxform = str  # preserva maiúsculas nas matrículas de [aircraft]
     parser.read(path, encoding="utf-8")
+
+    # Overrides {(seção, chave): valor} aplicados antes da validação — é por
+    # aqui que o handler Lambda injeta segredos do SSM sem tocar disco.
+    for (section, key), value in (overrides or {}).items():
+        if not parser.has_section(section):
+            parser.add_section(section)
+        parser.set(section, key, value)
 
     errors: list[str] = []
     credentials = CredentialsConfig(
@@ -187,24 +160,19 @@ def load_config(path: str | Path) -> AppConfig:
             parser, "monitor", "max_flight_minutes", 120, errors
         ),
     )
-    selenium = SeleniumConfig(
-        base_url=_require(parser, "selenium", "base_url", errors),
-        schedule_url=parser.get("selenium", "schedule_url", fallback="").strip(),
-        headless=_get_bool(parser, "selenium", "headless", True, errors),
-        page_load_timeout_seconds=_get_int(
-            parser, "selenium", "page_load_timeout_seconds", 30, errors
+    saga = SagaConfig(
+        base_url=_require(parser, "saga", "base_url", errors),
+        schedule_url=parser.get("saga", "schedule_url", fallback="").strip(),
+        request_timeout_seconds=_get_int(
+            parser, "saga", "request_timeout_seconds", 30, errors
         ),
-        element_timeout_seconds=_get_int(
-            parser, "selenium", "element_timeout_seconds", 15, errors
-        ),
-        debug_dir=parser.get("selenium", "debug_dir", fallback="debug").strip()
+        debug_dir=parser.get("saga", "debug_dir", fallback="debug").strip()
         or "debug",
     )
     logging_config = LoggingConfig(
         level=parser.get("logging", "level", fallback="INFO").strip() or "INFO",
         file=parser.get("logging", "file", fallback="").strip(),
     )
-    selectors = _load_selectors(parser)
     aircraft = _load_aircraft(parser, errors)
 
     if monitor.max_days < 1:
@@ -225,8 +193,7 @@ def load_config(path: str | Path) -> AppConfig:
         credentials=credentials,
         discord=discord,
         monitor=monitor,
-        selenium=selenium,
-        selectors=selectors,
+        saga=saga,
         aircraft=aircraft,
         logging=logging_config,
     )

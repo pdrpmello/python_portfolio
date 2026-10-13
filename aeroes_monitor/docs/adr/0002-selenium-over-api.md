@@ -1,7 +1,9 @@
 # ADR-0002: Automação via Selenium em vez de integração por API
 
 ## Status
-Aceito
+Superado por [[0011-http-direto-sem-browser]] (2026-07-13): a aquisição
+migrou para HTTP direto (requests), sem Selenium/Chrome. Contexto histórico
+preservado abaixo.
 
 ## Contexto
 O SAGA não expõe uma API pública documentada para consulta de escala. A única interface disponível é a aplicação web renderizada para o usuário final.

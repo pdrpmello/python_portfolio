@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  aeroes_monitor - varredura read-only da escala SAGA a cada 20 min
+  (06:00-23:40 BRT) por HTTP direto, estado no DynamoDB, segredos no SSM,
+  aviso no Discord. Custo estrutural R$ 0/mes.
+  Spec: docs/superpowers/specs/2026-07-13-requests-acquisition-design.md
+
+Parameters:
+  AlertEmail:
+    Type: String
+    Default: pedroh723@gmail.com
+    Description: E-mail que recebe o alarme de Errors (assinatura SNS).
+
+Resources:
+  MonitorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: aeroes-monitor
+      CodeUri: src/
+      Handler: handler.lambda_handler
+      Runtime: python3.14
+      Architectures: [x86_64]
+      MemorySize: 256
+      Timeout: 120
+      # A garantia "nunca duas varreduras simultaneas" (estado consistente,
+      # sem notificacao dupla) usava ReservedConcurrentExecutions: 1, mas
+      # conta AWS nova tem teto de concorrencia = 10 e exige pool nao-reservado
+      # >= 10 -> reservar 1 deixaria 9 < 10 e o deploy falha. Overlap ja e
+      # impedido na pratica: agenda de 20 em 20 min, timeout 120 s (nunca
+      # encosta na proxima janela) e zero retry. Para a garantia dura, pedir
+      # aumento do limite de concorrencia e readicionar a linha aqui.
+      # Sem retry do proprio Lambda em erro assincrono: a proxima varredura
+      # (20 min) e o retry natural.
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+      Environment:
+        Variables:
+          STATE_TABLE: !Ref StateTable
+          CONFIG_FILE: config.lambda.ini
+          SSM_PREFIX: /aeroes-monitor
+          LOG_LEVEL: INFO
+          # TZ e chave reservada do Lambda: setada no proprio handler.
+      Events:
+        Every20Min:
+          Type: ScheduleV2
+          Properties:
+            # 06:00, 06:20, ..., 23:40 BRT = 54 varreduras/dia.
+            ScheduleExpression: cron(0/20 6-23 * * ? *)
+            ScheduleExpressionTimezone: America/Sao_Paulo
+            RetryPolicy:
+              MaximumRetryAttempts: 0
+      Policies:
+        - Statement:
+            - Sid: SsmSecretsReadOnly
+              Effect: Allow
+              Action: ssm:GetParameter
+              Resource:
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/aeroes-monitor/saga-username
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/aeroes-monitor/saga-password
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/aeroes-monitor/discord-webhook-url
+            - Sid: StateReadWrite
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt StateTable.Arn
+
+  StateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: aeroes-monitor-state
+      # Provisioned 1/1 cabe na faixa always-free (25/25); on-demand NAO e gratis.
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  MonitorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/aeroes-monitor
+      RetentionInDays: 30
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: aeroes-monitor-alerts
+
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  ErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: aeroes-monitor-errors
+      AlarmDescription: >-
+        Handler morrendo sem conseguir avisar o Discord (excecao nao
+        tratada) por 3 janelas seguidas de 20 min.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref MonitorFunction
+      Statistic: Sum
+      Period: 1200
+      EvaluationPeriods: 3
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+Outputs:
+  FunctionName:
+    Value: !Ref MonitorFunction
+  StateTableName:
+    Value: !Ref StateTable
+  AlertTopicArn:
+    Value: !Ref AlertTopic
