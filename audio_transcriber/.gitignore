@@ -1,0 +1,7 @@
+# Áudios e transcrições são dados pessoais: nunca versionar
+*.mp3
+*.wav
+*.m4a
+*.ogg
+*.flac
+transcricao*.txt
