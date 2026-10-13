@@ -1,0 +1,6 @@
+.playwright-mcp/
+__pycache__/
+.venv/
+
+# Dados do Garmin e relatórios gerados são dados pessoais de saúde: nunca versionar
+data/

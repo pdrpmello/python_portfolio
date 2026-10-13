@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "garmin": {
+      "type": "stdio",
+      "command": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "C:\\Users\\pedro\\AppData\\Roaming\\npm\\node_modules\\@etweisberg\\garmin-connect-mcp\\dist\\index.js"
+      ],
+      "env": {}
+    }
+  }
+}
