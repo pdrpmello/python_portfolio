@@ -1,0 +1,3 @@
+# Configuração local com segredos (senha da MetaMask, ID da planilha).
+# Copie config_example.py para config.py e preencha. Nunca versionar.
+/config.py

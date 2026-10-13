@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # Mantém atualizados os SHAs fixados das actions no ci.yml.
+  # Vulnerabilidades nas dependências Python ficam com os alertas e as
+  # security updates do Dependabot, ativados nas configurações do repo.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci

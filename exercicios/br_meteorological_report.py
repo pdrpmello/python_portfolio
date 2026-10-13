@@ -1,10 +1,12 @@
 # This codes uses the API from Redemet to give the meteorological conditions of an Airport.
 
+import os
+
 import requests
 from datetime import datetime
 
-# API key
-api_key = "***REMOVED***"
+# API key: read from the environment, never hardcoded (see exercicios/README.md)
+api_key = os.environ.get("REDEMET_API_KEY")
 
 def meteorological_conditions(aerodrome_icao_code, api_key):
     # Get the current time in the required format (YYYYMMDDHH)
@@ -36,6 +38,9 @@ def meteorological_conditions(aerodrome_icao_code, api_key):
         return f"An error occurred: {err}"
 
 def main():
+    if not api_key:
+        raise SystemExit("Set the REDEMET_API_KEY environment variable first (see exercicios/README.md).")
+
     # User input
     aerodrome_icao_code = input("Enter the ICAO code of a brazillian aerodrome (e.g., SBGR for Guarulhos): ").upper()
 
