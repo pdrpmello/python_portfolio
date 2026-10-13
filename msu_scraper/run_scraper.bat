@@ -1,6 +1,7 @@
 @echo off
-cd /d "C:\Users\pedro\Documents\GitHub\python_portfolio\python_portfolio\msu_scraper"
+rem Roda o scraper com o Python do virtualenv do projeto (msu_scraper\.venv).
+cd /d "%~dp0"
 
-"C:\Users\pedro\Documents\GitHub\python_portfolio\python_portfolio\msu_scraper\.venv\Scripts\python.exe" main.py
+".venv\Scripts\python.exe" main.py
 
 exit
